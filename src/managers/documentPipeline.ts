@@ -193,21 +193,32 @@ export class DocumentPipeline {
       this.reportProgress(options.onProgress, {
         stage: "loading",
         progress: 0,
-        message: `Loading ${filePaths.length} document(s)...`,
+        message: `Loading documents...`,
       });
 
       const loadedDocs = await this.loadDocuments(filePaths, options);
       result.stages.loading = true;
       result.metadata.stageTimings.loading = Date.now() - loadStartTime;
 
+      // Update metadata with actual loaded document count (after directory expansion)
+      result.metadata.originalDocuments = loadedDocs.length;
+
       this.logger.info("Documents loaded", {
-        count: loadedDocs.length,
+        inputPaths: filePaths.length,
+        actualFilesLoaded: loadedDocs.length,
         time: result.metadata.stageTimings.loading,
         totalContentLength: loadedDocs.reduce(
           (sum, doc) => sum + doc.pageContent.length,
           0
         ),
-        sources: loadedDocs.map((doc) => doc.metadata.source || "unknown"),
+        sources: loadedDocs.slice(0, 10).map((doc) => doc.metadata.source || "unknown"),
+      });
+
+      // Report the actual number of files loaded
+      this.reportProgress(options.onProgress, {
+        stage: "loading",
+        progress: 10,
+        message: `Loaded ${loadedDocs.length} file(s)`,
       });
 
       // Stop if no documents were loaded - this is a critical failure
@@ -230,7 +241,7 @@ export class DocumentPipeline {
       this.reportProgress(options.onProgress, {
         stage: "chunking",
         progress: 25,
-        message: "Chunking documents...",
+        message: `Chunking ${loadedDocs.length} document(s)...`,
       });
 
       const chunkingResult = await this.semanticChunker.chunkDocuments(
@@ -272,7 +283,7 @@ export class DocumentPipeline {
       this.reportProgress(options.onProgress, {
         stage: "embedding",
         progress: 50,
-        message: "Generating embeddings...",
+        message: `Generating embeddings for ${result.chunks.length} chunk(s)...`,
       });
 
       // Stage 4: Store in vector database
@@ -280,7 +291,7 @@ export class DocumentPipeline {
       this.reportProgress(options.onProgress, {
         stage: "storing",
         progress: 70,
-        message: "Storing embeddings in vector database...",
+        message: `Storing ${result.chunks.length} chunk(s) in vector database...`,
       });
 
       await this.storeDocuments(result.chunks, topicId, options);
@@ -291,6 +302,12 @@ export class DocumentPipeline {
       result.metadata.stageTimings.storing = Date.now() - storeStartTime;
       result.metadata.stageTimings.embedding =
         result.metadata.stageTimings.storing; // Same timing
+
+      this.reportProgress(options.onProgress, {
+        stage: "storing",
+        progress: 100,
+        message: `Completed: ${loadedDocs.length} file(s), ${result.metadata.chunksStored} chunk(s)`,
+      });
 
       this.logger.info("Documents stored with embeddings", {
         chunkCount: result.metadata.chunksStored,
@@ -304,7 +321,7 @@ export class DocumentPipeline {
       this.reportProgress(options.onProgress, {
         stage: "complete",
         progress: 100,
-        message: `Successfully processed ${filePaths.length} document(s)`,
+        message: `Successfully processed ${loadedDocs.length} document(s)`,
         details: result.metadata,
       });
 
