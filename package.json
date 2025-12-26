@@ -149,6 +149,21 @@
           "default": true,
           "markdownDescription": "**Include workspace context:** Pass selected code, active file, imports, and symbols to Copilot (like #codebase).\n\n**Includes:**\n- Selected code (max 1000 chars)\n- File imports and symbols\n- Workspace name\n\n**Privacy:** Only relative paths, no sensitive data\n\n⚠️ _Only applies when LLM Mode is enabled_",
           "order": 16
+        },
+        "ragnarok.recursiveDirectory": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "**Recursively scan directories** when adding folders to topics. When enabled, all subdirectories will be scanned for supported files. When disabled, only files in the selected directory will be included.",
+          "order": 17
+        },
+        "ragnarok.includeExtensions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [".pdf", ".md", ".markdown", ".html", ".htm", ".txt"],
+          "markdownDescription": "**File extensions to include** when scanning directories for documents. Only files with these extensions will be processed. Leave empty to include all supported extensions.",
+          "order": 18
         }
       }
     },

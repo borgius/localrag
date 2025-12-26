@@ -8,7 +8,7 @@ import * as fs from "fs/promises";
 import { TopicManager } from "./managers/topicManager";
 import { EmbeddingService } from "./embeddings/embeddingService";
 import { TopicTreeDataProvider } from "./topicTreeView";
-import { COMMANDS } from "./utils/constants";
+import { COMMANDS, CONFIG } from "./utils/constants";
 import { Logger } from "./utils/logger";
 import { GitHubTokenManager } from "./utils/githubTokenManager";
 
@@ -320,29 +320,14 @@ export class CommandHandler {
         }
       }
 
-      // Ask user about recursive loading if folders are selected
-      let recursiveDirectory = false;
-      if (hasDirectories) {
-        const choice = await vscode.window.showQuickPick(
-          [
-            { label: "Load recursively", description: "Include all files from subfolders", value: true },
-            { label: "Load only from selected folders", description: "Don't scan subfolders", value: false },
-          ],
-          {
-            placeHolder: "One or more folders selected. How would you like to load them?",
-          }
-        );
-
-        if (!choice) {
-          return; // User cancelled
-        }
-
-        recursiveDirectory = choice.value;
-      }
+      // Read settings for directory loading options
+      const config = vscode.workspace.getConfiguration(CONFIG.ROOT);
+      const recursiveDirectory = config.get<boolean>("recursiveDirectory", false);
+      const includeExtensions = config.get<string[]>("includeExtensions", [".pdf", ".md", ".markdown", ".html", ".htm", ".txt"]);
 
       logger.info(
         `Adding ${filePaths.length} document(s) to topic: ${selectedTopic.name}`,
-        { recursiveDirectory }
+        { recursiveDirectory, includeExtensions, hasDirectories }
       );
 
       // Process documents using TopicManager
@@ -365,6 +350,7 @@ export class CommandHandler {
               },
               loaderOptions: {
                 recursiveDirectory,
+                includeExtensions,
               },
             }
           );
