@@ -8,7 +8,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/hyorman/ragnarok"
+    "url": "https://github.com/borgius/ragnarok"
   },
   "engines": {
     "vscode": "^1.105.0"
