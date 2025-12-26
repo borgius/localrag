@@ -38,7 +38,7 @@ const target = `${platformName}-${archName}`;
 const installScript = path.join(__dirname, 'install-platform-deps.js');
 const installProcess = spawn('node', [installScript, target], {
   stdio: 'inherit',
-  shell: false
+  shell: true
 });
 
 installProcess.on('close', (code) => {
