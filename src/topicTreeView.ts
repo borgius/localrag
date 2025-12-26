@@ -51,6 +51,8 @@ export class TopicTreeDataProvider
         items.push(new TopicTreeItem(null, "config-status"));
 
         // Add topics
+        const topicManager = await this.topicManager;
+        await topicManager.ensureInitialized();
         const topics = await topicManager.getAllTopics();
         logger.debug(`Loaded ${topics.length} topics for tree view`);
 
@@ -88,6 +90,8 @@ export class TopicTreeDataProvider
         const items: TopicTreeItem[] = [];
 
         // Add stats item
+        const topicManager = await this.topicManager;
+        await topicManager.ensureInitialized();
         const stats = await topicManager.getTopicStats(element.topic.id);
         if (stats) {
           items.push(new TopicTreeItem(stats, "topic-stats"));

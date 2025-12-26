@@ -1,9 +1,9 @@
 {
-  "name": "ragnarok",
-  "displayName": "RAGnarōk - Local RAG for Copilot",
+  "name": "localrag",
+  "displayName": "LocalRAG - Enhanced Local RAG for VS Code",
   "description": "Retrieval-Augmented Generation extension for VSCode with local sentence transformers and semantic chunking",
   "version": "0.2.7",
-  "publisher": "hyorman",
+  "publisher": "borgius",
   "icon": "assets/icon.png",
   "license": "MIT",
   "repository": {

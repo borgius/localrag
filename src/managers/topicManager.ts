@@ -85,29 +85,7 @@ export class TopicManager {
         );
       }
       TopicManager.instance = new TopicManager(context);
-      // Automatically initialize on first getInstance call
-      TopicManager.initPromise = TopicManager.instance.init();
-    }
-
-    // Wait for initialization to complete
-    if (TopicManager.initPromise) {
-      try {
-        await TopicManager.initPromise;
-      } catch (error) {
-        // Clear instance on failure to allow retry
-        TopicManager.instance = null as any;
-        TopicManager.initPromise = null;
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        throw new Error(`TopicManager initialization failed: ${errorMessage}`);
-      } finally {
-        TopicManager.initPromise = null;
-      }
-    }
-
-    // Verify initialization succeeded
-    if (!TopicManager.instance.isInitialized) {
-      TopicManager.instance = null as any;
-      throw new Error("TopicManager initialization failed - instance is not initialized");
+      // Don't auto-initialize - will be initialized lazily when needed
     }
 
     return TopicManager.instance;
@@ -157,6 +135,28 @@ export class TopicManager {
         error: error instanceof Error ? error.message : String(error),
       });
       throw error;
+    }
+  }
+
+  public async ensureInitialized(): Promise<void> {
+    if (this.isInitialized) {
+      return;
+    }
+
+    if (TopicManager.initPromise) {
+      await TopicManager.initPromise;
+      return;
+    }
+
+    TopicManager.initPromise = this.init();
+    try {
+      await TopicManager.initPromise;
+    } catch (error) {
+      TopicManager.initPromise = null;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to initialize TopicManager: ${errorMessage}`);
+    } finally {
+      TopicManager.initPromise = null;
     }
   }
 

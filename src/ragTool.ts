@@ -95,6 +95,7 @@ export class RAGTool {
       const topicMatch = await this.findBestMatchingTopic(params.topic);
 
       // Check if topic has any documents
+      await topicManager.ensureInitialized();
       const stats = await topicManager.getTopicStats(topicMatch.topic.id);
       if (!stats || stats.documentCount === 0) {
         throw new Error(
@@ -233,6 +234,7 @@ export class RAGTool {
 
     // Get vector store from TopicManager
     const topicManager = await this.topicManager;
+    await topicManager.ensureInitialized();
     let vectorStore;
     try {
       vectorStore = await topicManager.getVectorStore(topicId);
@@ -317,6 +319,7 @@ export class RAGTool {
   }> {
     // Get all available topics
     const topicManager = await this.topicManager;
+    await topicManager.ensureInitialized();
     const allTopics = await topicManager.getAllTopics();
 
     if (allTopics.length === 0) {

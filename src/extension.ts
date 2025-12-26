@@ -16,56 +16,44 @@ import { GitHubTokenManager } from "./utils/githubTokenManager";
 const logger = new Logger("Extension");
 
 export async function activate(context: vscode.ExtensionContext) {
+  console.log("RAGnarōk: Activation started");
   logger.info("RAGnarōk extension activating...");
 
   try {
     // Initialize TopicManager (singleton with automatic initialization)
+    console.log("RAGnarōk: Initializing TopicManager");
     const topicManager = await TopicManager.getInstance(context);
+    console.log("RAGnarōk: TopicManager initialized");
 
-    // Initialize embedding service instance (will load model on first use)
+    // Initialize embedding service instance (lazy initialization - will load model on first use)
+    console.log("RAGnarōk: Initializing EmbeddingService");
     const embeddingService = EmbeddingService.getInstance();
+    console.log("RAGnarōk: EmbeddingService initialized");
 
     // Initialize GitHub token manager
+    console.log("RAGnarōk: Initializing GitHubTokenManager");
     GitHubTokenManager.initialize(context);
     logger.info("GitHub token manager initialized");
+    console.log("RAGnarōk: GitHubTokenManager initialized");
 
     // Register tree view
+    console.log("RAGnarōk: Registering tree view");
     const treeDataProvider = new TopicTreeDataProvider();
     const treeView = vscode.window.createTreeView(VIEWS.RAG_TOPICS, {
       treeDataProvider,
       showCollapseAll: true,
     });
     context.subscriptions.push(treeView);
+    console.log("RAGnarōk: Tree view registered");
 
     // Register commands
+    console.log("RAGnarōk: Registering commands");
     await CommandHandler.registerCommands(context, treeDataProvider);
+    console.log("RAGnarōk: Commands registered");
 
-    // Load topics with error handling
-    try {
-      const topics = await topicManager.getAllTopics();
-      logger.info(`Loaded ${topics.length} topics`);
-    } catch (dbError) {
-      logger.error("Failed to load topics", { error: dbError });
-      // If topics index is corrupted, offer to reset it
-      const response = await vscode.window.showErrorMessage(
-        "Failed to load RAG topics. Would you like to reset the database?",
-        "Reset Database",
-        "Cancel"
-      );
-
-      if (response === "Reset Database") {
-        // Delete all topics to reset
-        const topics = await topicManager.getAllTopics();
-        for (const topic of topics) {
-          await topicManager.deleteTopic(topic.id);
-        }
-        vscode.window.showInformationMessage(
-          "Database has been reset successfully."
-        );
-        logger.info("Database reset completed");
-      }
-      // Don't throw - let the extension continue working
-    }
+    // Don't load topics during activation - let them load lazily when accessed
+    logger.info("RAGnarōk extension activated successfully");
+    console.log("RAGnarōk: Activation successful");
 
     // Register RAG tool for Copilot/LLM agents
     try {
@@ -153,6 +141,7 @@ export async function activate(context: vscode.ExtensionContext) {
                   await embeddingService.initialize();
 
                   progress.report({ message: "Reinitializing services..." });
+                  await topicManager.ensureInitialized();
                   await topicManager.reinitializeWithNewModel();
                 }
               );
@@ -196,7 +185,9 @@ export async function activate(context: vscode.ExtensionContext) {
     logger.info("Extension activation complete");
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error("RAGnarōk: Failed to activate extension", error);
     logger.error("Failed to activate extension", { error: errorMessage });
+    vscode.window.showErrorMessage(`RAGnarōk activation failed: ${errorMessage}`);
     throw error; // Re-throw to signal activation failure
   }
 }

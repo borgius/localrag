@@ -90,6 +90,7 @@ export class CommandHandler {
       await this.embeddingService.initialize(model);
 
       // Reinitialize topic manager vector stores
+      await this.topicManager.ensureInitialized();
       await this.topicManager.reinitializeWithNewModel();
 
       vscode.window.showInformationMessage(`Embedding model set to "${model}"`);
@@ -126,6 +127,7 @@ export class CommandHandler {
       });
 
       logger.info(`Creating topic: ${name}`);
+      await this.topicManager.ensureInitialized();
       const topic = await this.topicManager.createTopic({
         name: name.trim(),
         description: description?.trim(),
@@ -154,6 +156,7 @@ export class CommandHandler {
         topicToDelete = item.topic;
       } else {
         // Called from command palette - show picker
+        await this.topicManager.ensureInitialized();
         const topics = await this.topicManager.getAllTopics();
 
         if (topics.length === 0) {
@@ -192,6 +195,7 @@ export class CommandHandler {
         logger.info(
           `Deleting topic: ${topicToDelete.name} (${topicToDelete.id})`
         );
+        await this.topicManager.ensureInitialized();
         await this.topicManager.deleteTopic(topicToDelete.id);
         vscode.window.showInformationMessage(
           `Topic "${topicToDelete.name}" deleted.`
@@ -217,6 +221,7 @@ export class CommandHandler {
         selectedTopic = item.topic;
       } else {
         // Called from command palette - show picker
+        await this.topicManager.ensureInitialized();
         const topics = await this.topicManager.getAllTopics();
 
         if (topics.length === 0) {
@@ -338,6 +343,7 @@ export class CommandHandler {
           cancellable: false,
         },
         async (progress) => {
+          await this.topicManager.ensureInitialized();
           const results = await this.topicManager.addDocuments(
             selectedTopic.id,
             filePaths,
@@ -371,6 +377,7 @@ export class CommandHandler {
         }
       );
 
+      await this.topicManager.ensureInitialized();
       const stats = await this.topicManager.getTopicStats(selectedTopic.id);
       const actualFileCount = stats?.documentCount || 0;
       vscode.window.showInformationMessage(
@@ -395,6 +402,7 @@ export class CommandHandler {
         selectedTopic = item.topic;
       } else {
         // Called from command palette - show picker
+        await this.topicManager.ensureInitialized();
         const topics = await this.topicManager.getAllTopics();
 
         if (topics.length === 0) {
@@ -609,6 +617,7 @@ export class CommandHandler {
             increment: 10,
           });
 
+          await this.topicManager.ensureInitialized();
           const results = await this.topicManager.addDocuments(
             selectedTopic.id,
             [repoUrl],
@@ -640,6 +649,7 @@ export class CommandHandler {
         }
       );
 
+      await this.topicManager.ensureInitialized();
       const stats = await this.topicManager.getTopicStats(selectedTopic.id);
       vscode.window.showInformationMessage(
         `GitHub repository added to "${selectedTopic.name}" successfully! Total: ${stats?.documentCount} documents, ${stats?.chunkCount} chunks.`
@@ -691,6 +701,7 @@ export class CommandHandler {
         logger.warn("Clearing entire database");
 
         // Delete all topics (this will also clear their vector stores)
+        await this.topicManager.ensureInitialized();
         const topics = await this.topicManager.getAllTopics();
         for (const topic of topics) {
           await this.topicManager.deleteTopic(topic.id);
