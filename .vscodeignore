@@ -10,7 +10,6 @@ src/**
 **/*.ts
 **/*.map
 
-
 # Configuration files
 .gitignore
 .yarnrc
@@ -20,11 +19,8 @@ src/**
 **/.tsconfig.test.json
 **/.eslintrc.json
 
-# Dependencies - let vsce handle node_modules inclusion automatically
-# We previously manually managed this, but it causes issues with pnpm symlinks and missing dependencies
-# node_modules/**
-
-# LangChain dependencies (CRITICAL - needed for document loading and vector stores)
+# Exclude unnecessary node_modules (vsce will include dependencies from package.json)
+# Keep only essential dependencies for the extension to work
 !node_modules/@langchain/**
 !node_modules/langchain/**
 !node_modules/langsmith/**
