@@ -39,7 +39,7 @@ export class FileWatcherService {
     const config = vscode.workspace.getConfiguration(CONFIG.ROOT);
     this.watchFolder = config.get<string>(CONFIG.WATCH_FOLDER, "");
     this.isRecursive = config.get<boolean>(CONFIG.WATCH_FOLDER_RECURSIVE, true);
-    this.includeExtensions = config.get<string[]>("includeExtensions", DEFAULTS.INCLUDE_EXTENSIONS as unknown as string[]);
+    this.includeExtensions = config.get<string[]>("includeExtensions", DEFAULTS.INCLUDE_EXTENSIONS);
 
     if (!this.watchFolder || this.watchFolder.trim().length === 0) {
       this.logger.info("No watch folder configured, skipping file watcher setup");
@@ -156,6 +156,7 @@ export class FileWatcherService {
    */
   private async processQueuedChanges(): Promise<void> {
     if (this.pendingChanges.size === 0 || !this.defaultTopicId) {
+      this.logger.debug("Skipping update - no changes or no default topic");
       return;
     }
 
@@ -194,8 +195,14 @@ export class FileWatcherService {
           progress.report({ message: `Processing ${existingFiles.length} file(s)...` });
 
           await this.topicManager.ensureInitialized();
+          
+          // Safe to use defaultTopicId here because we checked it at the start
+          if (!this.defaultTopicId) {
+            throw new Error("Default topic ID is not set");
+          }
+
           const results = await this.topicManager.addDocuments(
-            this.defaultTopicId!,
+            this.defaultTopicId,
             existingFiles,
             {
               onProgress: (pipelineProgress) => {
@@ -235,7 +242,7 @@ export class FileWatcherService {
     const config = vscode.workspace.getConfiguration(CONFIG.ROOT);
     const newWatchFolder = config.get<string>(CONFIG.WATCH_FOLDER, "");
     const newRecursive = config.get<boolean>(CONFIG.WATCH_FOLDER_RECURSIVE, true);
-    const newExtensions = config.get<string[]>("includeExtensions", DEFAULTS.INCLUDE_EXTENSIONS as unknown as string[]);
+    const newExtensions = config.get<string[]>("includeExtensions", DEFAULTS.INCLUDE_EXTENSIONS);
 
     // Check if configuration changed
     const configChanged =

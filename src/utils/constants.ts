@@ -45,8 +45,8 @@ export const CONFIG = {
 export const DEFAULTS = {
   LOCAL_MODEL_PATH: "",
   EMBEDDING_MODEL: "Xenova/all-MiniLM-L6-v2",
-  INCLUDE_EXTENSIONS: [".pdf", ".md", ".markdown", ".html", ".htm", ".txt"],
-} as const;
+  INCLUDE_EXTENSIONS: [".pdf", ".md", ".markdown", ".html", ".htm", ".txt"] as string[],
+};
 
 /**
  * Command identifiers
