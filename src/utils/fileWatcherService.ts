@@ -196,13 +196,9 @@ export class FileWatcherService {
 
           await this.topicManager.ensureInitialized();
           
-          // Safe to use defaultTopicId here because we checked it at the start
-          if (!this.defaultTopicId) {
-            throw new Error("Default topic ID is not set");
-          }
-
+          // defaultTopicId is guaranteed to be non-null here due to early return check at line 158-161
           const results = await this.topicManager.addDocuments(
-            this.defaultTopicId,
+            this.defaultTopicId!,
             existingFiles,
             {
               onProgress: (pipelineProgress) => {
