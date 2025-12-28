@@ -161,6 +161,34 @@ export class TopicManager {
   }
 
   /**
+   * Ensure a default topic exists, create if necessary
+   * This is called during initialization to support folder watching
+   */
+  public async ensureDefaultTopic(): Promise<Topic> {
+    await this.ensureInitialized();
+    
+    if (!this.topicsIndex) {
+      throw new Error("TopicManager not initialized");
+    }
+
+    // Look for existing default topic
+    let defaultTopic = Object.values(this.topicsIndex.topics).find(
+      t => t.name === EXTENSION.DEFAULT_TOPIC_NAME
+    );
+
+    if (!defaultTopic) {
+      // Create default topic
+      this.logger.info("Creating default topic for folder watching");
+      defaultTopic = await this.createTopic({
+        name: EXTENSION.DEFAULT_TOPIC_NAME,
+        description: "Automatically managed topic for watched folder",
+      });
+    }
+
+    return defaultTopic;
+  }
+
+  /**
    * Create a new topic
    */
   public async createTopic(options: CreateTopicOptions): Promise<Topic> {

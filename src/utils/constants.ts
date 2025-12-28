@@ -11,6 +11,7 @@ export const EXTENSION = {
   DISPLAY_NAME: "RAGnarōk",
   DATABASE_DIR: "database",
   TOPICS_INDEX_FILENAME: "topics.json",
+  DEFAULT_TOPIC_NAME: "Default",
 } as const;
 
 /**
@@ -33,6 +34,9 @@ export const CONFIG = {
   AGENTIC_USE_LLM: "agenticUseLLM",
   AGENTIC_LLM_MODEL: "agenticLLMModel",
   AGENTIC_INCLUDE_WORKSPACE: "agenticIncludeWorkspaceContext",
+  // Folder watching configuration
+  WATCH_FOLDER: "watchFolder",
+  WATCH_FOLDER_RECURSIVE: "watchFolderRecursive",
 } as const;
 
 /**
