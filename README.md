@@ -1,10 +1,14 @@
 <div align="center">
-  <img src="./assets/icon.png" alt="RAGnarok icon" title="RAGnarok" width="120" height="120" />
-  <h1>RAGnarōk — Local, Agentic Knowledge RAG for VS Code</h1>
+  <img src="./assets/icon.png" alt="LocalRAG icon" title="LocalRAG" width="120" height="120" />
+  <h1>LocalRAG — Enhanced Local RAG for VS Code</h1>
   <p><strong>Find precise answers from your files and repos using local embeddings, smart query planning, and embedded vector search.</strong></p>
 </div>
 
-RAGnarōk helps developers, knowledge workers, and enterprise teams search, summarize, review, and answer questions over local documents, repositories, and the active VS Code workspace — with privacy and compliance in mind. Use it fully offline with local Transformers.js embeddings and LanceDB storage, or enable optional LLM-based planning and evaluation via VS Code Copilot models without any external API key for advanced query decomposition and result assessment.
+LocalRAG helps developers, knowledge workers, and enterprise teams search, summarize, review, and answer questions over local documents, repositories, and the active VS Code workspace — with privacy and compliance in mind. Use it fully offline with local Transformers.js embeddings and LanceDB storage, or enable optional LLM-based planning and evaluation via VS Code Copilot models without any external API key for advanced query decomposition and result assessment.
+
+## 🙏 Acknowledgments
+
+This extension is a fork of the original [RAGnarōk](https://github.com/hyorman/ragnarok) project. We extend our heartfelt thanks to the original author [hyorman](https://github.com/hyorman) and all contributors for their excellent work in creating a powerful, privacy-focused RAG solution for VS Code.
 
 Why install?
 
@@ -100,7 +104,7 @@ npm run compile
 #### From VSIX
 
 ```bash
-code --install-extension ragnarok-0.1.6.vsix
+code --install-extension localrag-0.2.8.vsix
 ```
 
 ### Basic Usage
