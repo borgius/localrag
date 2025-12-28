@@ -164,6 +164,18 @@
           "default": [".pdf", ".md", ".markdown", ".html", ".htm", ".txt"],
           "markdownDescription": "**File extensions to include** when scanning directories for documents. Only files with these extensions will be processed. Leave empty to include all supported extensions.",
           "order": 18
+        },
+        "ragnarok.watchFolder": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "**Folder to watch for changes**: Specify an absolute path to a folder that will be automatically monitored. When files are added, modified, or deleted in this folder, the default topic will be automatically updated. Leave empty to disable folder watching.",
+          "order": 19
+        },
+        "ragnarok.watchFolderRecursive": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "**Watch folder recursively**: When enabled, subdirectories of the watch folder will also be monitored for changes. Only applies when `watchFolder` is set.",
+          "order": 20
         }
       }
     },

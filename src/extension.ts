@@ -12,8 +12,10 @@ import { TopicTreeDataProvider } from "./topicTreeView";
 import { VIEWS, STATE, COMMANDS, CONFIG } from "./utils/constants";
 import { Logger } from "./utils/logger";
 import { GitHubTokenManager } from "./utils/githubTokenManager";
+import { FileWatcherService } from "./utils/fileWatcherService";
 
 const logger = new Logger("Extension");
+let fileWatcherService: FileWatcherService | null = null;
 
 export async function activate(context: vscode.ExtensionContext) {
   console.log("RAGnarōk: Activation started");
@@ -111,10 +113,21 @@ export async function activate(context: vscode.ExtensionContext) {
       await context.globalState.update(STATE.HAS_SHOWN_WELCOME, true);
     }
 
+    // Initialize FileWatcherService
+    console.log("RAGnarōk: Initializing FileWatcherService");
+    fileWatcherService = new FileWatcherService(context, topicManager);
+    await fileWatcherService.initialize();
+    logger.info("FileWatcherService initialized");
+    console.log("RAGnarōk: FileWatcherService initialized");
+
     // Register configuration change listener for embedding model
     const configChangeDisposable = vscode.workspace.onDidChangeConfiguration(
       async (event) => {
         const localModelPathSetting = `${CONFIG.ROOT}.${CONFIG.LOCAL_MODEL_PATH}`;
+        const watchFolderSettings = [
+          `${CONFIG.ROOT}.${CONFIG.WATCH_FOLDER}`,
+          `${CONFIG.ROOT}.${CONFIG.WATCH_FOLDER_RECURSIVE}`,
+        ];
         const treeViewConfigPaths = [
           `${CONFIG.ROOT}.${CONFIG.RETRIEVAL_STRATEGY}`,
           `${CONFIG.ROOT}.${CONFIG.USE_AGENTIC_MODE}`,
@@ -169,6 +182,23 @@ export async function activate(context: vscode.ExtensionContext) {
           }
         }
 
+        // Handle watch folder configuration changes
+        const affectsWatchFolder = watchFolderSettings.some((configPath) =>
+          event.affectsConfiguration(configPath)
+        );
+        if (affectsWatchFolder && fileWatcherService) {
+          logger.info("Watch folder configuration changed");
+          try {
+            await fileWatcherService.updateConfiguration();
+          } catch (error) {
+            const errorMessage =
+              error instanceof Error ? error.message : String(error);
+            logger.error("Failed to update file watcher configuration", {
+              error: errorMessage,
+            });
+          }
+        }
+
         const affectsTreeViewConfig = treeViewConfigPaths.some((configPath) =>
           event.affectsConfiguration(configPath)
         );
@@ -196,6 +226,12 @@ export async function deactivate() {
   logger.info("RAGnarōk extension deactivating...");
 
   try {
+    // Dispose of FileWatcherService
+    if (fileWatcherService) {
+      await fileWatcherService.dispose();
+      fileWatcherService = null;
+    }
+
     // Dispose of TopicManager (includes all caches and dependencies)
     const topicManager = await TopicManager.getInstance();
     topicManager.dispose();
