@@ -32,7 +32,7 @@ const mockVscode = {
     getConfiguration: (section?: string) => ({
       get: <T>(key: string, defaultValue?: T): T => {
         if (section) {
-          const sectionConfig = section === 'ragnarok' ? ragConfig : globalConfig;
+          const sectionConfig = section === 'localrag' ? ragConfig : globalConfig;
           const scopedValue = (sectionConfig as any)[key];
           if (scopedValue !== undefined) {
             return scopedValue;

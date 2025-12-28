@@ -11,8 +11,8 @@ const logger = new Logger("GitHubTokenManager");
 export class GitHubTokenManager {
   private static instance: GitHubTokenManager;
   private secretStorage: vscode.SecretStorage;
-  private static readonly TOKEN_PREFIX = "ragnarok.github.token.";
-  private static readonly HOSTS_KEY = "ragnarok.github.hosts";
+  private static readonly TOKEN_PREFIX = "localrag.github.token.";
+  private static readonly HOSTS_KEY = "localrag.github.hosts";
 
   private constructor(secretStorage: vscode.SecretStorage) {
     this.secretStorage = secretStorage;

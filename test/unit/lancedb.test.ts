@@ -161,7 +161,7 @@ describe('LanceDB Integration', function () {
 
   describe('Real Yellow Book Data Search', function () {
     it('should search in actual yellow book database', async function () {
-      const realDbPath = 'C:\\Users\\haorman\\AppData\\Roaming\\Code\\User\\globalStorage\\hyorman.ragnarok\\database\\lancedb';
+      const realDbPath = 'C:\\Users\\borgius\\AppData\\Roaming\\Code\\User\\globalStorage\\borgius.localrag\\database\\lancedb';
       const realTableName = 'topic-1762689493819-xmetedt';
 
       try {

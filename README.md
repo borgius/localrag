@@ -31,7 +31,7 @@ Why install?
 ### 🧩 **Local Embedding Model Support**
 
 - **Run embeddings locally**: Use Transformers.js models (ONNX/wasm) without external APIs.
-- **Local model picker**: Load models from `ragnarok.localModelPath` and switch models in the tree view.
+- **Local model picker**: Load models from `localrag.localModelPath` and switch models in the tree view.
 - **Offline & private**: Keep embeddings and inference on-device for privacy and compliance.
 - **Default model included**: Ships with `Xenova/all-MiniLM-L6-v2` by default for fast, 384-dimension embeddings.
 
@@ -72,7 +72,7 @@ Why install?
 ### 🎨 **Enhanced UI**
 
 - **Configuration View**: See agentic settings at a glance
-- **Embedding Model Picker**: Tree view lists curated + local models (from `ragnarok.localModelPath`) with download status; click to switch
+- **Embedding Model Picker**: Tree view lists curated + local models (from `localrag.localModelPath`) with download status; click to switch
 - **Statistics Display**: Documents, chunks, store type, model info
 - **Progress Tracking**: Real-time updates during processing
 - **Rich Icons**: Visual hierarchy with emojis and theme icons
@@ -94,8 +94,8 @@ Why install?
 #### From Source
 
 ```bash
-git clone https://github.com/hyorman/ragnarok.git
-cd ragnarok
+git clone https://github.com/borgius/localrag.git
+cd localrag
 npm install
 npm run compile
 # Press F5 to run in development mode
@@ -112,7 +112,7 @@ code --install-extension localrag-0.2.8.vsix
 #### 0. (Optional) Choose/prepare your embedding model
 
 - Default: `Xenova/all-MiniLM-L6-v2`
-- Offline/local: set `ragnarok.localModelPath` to a folder containing Transformers.js-compatible models (each model in its own subfolder). The tree view will list those models alongside curated ones; click any entry to load it.
+- Offline/local: set `localrag.localModelPath` to a folder containing Transformers.js-compatible models (each model in its own subfolder). The tree view will list those models alongside curated ones; click any entry to load it.
 - When you change the embedding model, existing topics keep their original embeddings—create a new topic if you need to ingest with the new model.
 
 #### 1. Create a Topic
@@ -226,22 +226,22 @@ The RAG tool will:
 ```json
 {
   // Number of results to return
-  "ragnarok.topK": 5,
+  "localrag.topK": 5,
 
   // Chunk size for splitting documents
-  "ragnarok.chunkSize": 512,
+  "localrag.chunkSize": 512,
 
   // Chunk overlap for context preservation
-  "ragnarok.chunkOverlap": 50,
+  "localrag.chunkOverlap": 50,
   // Optional absolute/tilde path to a local Transformers.js model directory
-  "ragnarok.localModelPath": "",
+  "localrag.localModelPath": "",
 
   // Retrieval strategy
-  "ragnarok.retrievalStrategy": "hybrid",
+  "localrag.retrievalStrategy": "hybrid",
 
   // Folder watching (optional)
-  "ragnarok.watchFolder": "",  // Absolute path to folder to watch
-  "ragnarok.watchFolderRecursive": true  // Watch subdirectories
+  "localrag.watchFolder": "",  // Absolute path to folder to watch
+  "localrag.watchFolderRecursive": true  // Watch subdirectories
 }
 ```
 
@@ -251,17 +251,17 @@ The RAG tool will:
 
 LocalRAG can automatically monitor a folder for changes and keep a default topic up-to-date:
 
-1. **Set the watch folder**: Configure `ragnarok.watchFolder` with an absolute path to the folder you want to monitor.
-2. **Choose recursive mode**: Set `ragnarok.watchFolderRecursive` to `true` to include subdirectories (default) or `false` for only the top-level folder.
+1. **Set the watch folder**: Configure `localrag.watchFolder` with an absolute path to the folder you want to monitor.
+2. **Choose recursive mode**: Set `localrag.watchFolderRecursive` to `true` to include subdirectories (default) or `false` for only the top-level folder.
 3. **Automatic updates**: When files with supported extensions (`.pdf`, `.md`, `.html`, `.txt`, etc.) are added, modified, or deleted in the watched folder, they are automatically processed and added to the "Default" topic.
 
 **Example configuration:**
 
 ```json
 {
-  "ragnarok.watchFolder": "/Users/username/Documents/my-docs",
-  "ragnarok.watchFolderRecursive": true,
-  "ragnarok.includeExtensions": [".pdf", ".md", ".html", ".txt"]
+  "localrag.watchFolder": "/Users/username/Documents/my-docs",
+  "localrag.watchFolderRecursive": true,
+  "localrag.includeExtensions": [".pdf", ".md", ".html", ".txt"]
 }
 ```
 
@@ -278,29 +278,29 @@ LocalRAG can automatically monitor a folder for changes and keep a default topic
 ```json
 {
   // Enable agentic RAG with query planning
-  "ragnarok.useAgenticMode": true,
+  "localrag.useAgenticMode": true,
 
   // Use LLM for query planning (requires Copilot)
-  "ragnarok.agenticUseLLM": false,
+  "localrag.agenticUseLLM": false,
 
   // Maximum refinement iterations
-  "ragnarok.agenticMaxIterations": 3,
+  "localrag.agenticMaxIterations": 3,
 
   // Confidence threshold (0-1) for stopping iteration
-  "ragnarok.agenticConfidenceThreshold": 0.7,
+  "localrag.agenticConfidenceThreshold": 0.7,
 
   // Enable iterative refinement
-  "ragnarok.agenticIterativeRefinement": true,
+  "localrag.agenticIterativeRefinement": true,
 
   // LLM model for planning (when agenticUseLLM is true) — models provided via VS Code Copilot/LM API
-  "ragnarok.agenticLLMModel": "gpt-4o",
+  "localrag.agenticLLMModel": "gpt-4o",
 
   // Include workspace context in queries
-  "ragnarok.agenticIncludeWorkspaceContext": true
+  "localrag.agenticIncludeWorkspaceContext": true
 }
 ```
 
-Set `ragnarok.localModelPath` to point at a folder that already contains compatible Transformers.js models (one subfolder per model—e.g., an ONNX export downloaded ahead of time). Entries found here appear in the tree view and can be selected directly, and this local path takes precedence over `ragnarok.embeddingModel`.
+Set `localrag.localModelPath` to point at a folder that already contains compatible Transformers.js models (one subfolder per model—e.g., an ONNX export downloaded ahead of time). Entries found here appear in the tree view and can be selected directly, and this local path takes precedence over `localrag.embeddingModel`.
 
 **Available Embedding Models to Download** (local, no API needed):
 
@@ -309,9 +309,9 @@ Set `ragnarok.localModelPath` to point at a folder that already contains compati
 - `Xenova/paraphrase-MiniLM-L6-v2` - Optimized for paraphrasing
 - `Xenova/multi-qa-MiniLM-L6-cos-v1` - Optimized for Q&A
 
-_The extension ships with `Xenova/all-MiniLM-L6-v2` by default; to use other local models, set `ragnarok.localModelPath` or click the model name in tree view._
+_The extension ships with `Xenova/all-MiniLM-L6-v2` by default; to use other local models, set `localrag.localModelPath` or click the model name in tree view._
 
-Any models you place under `ragnarok.localModelPath` show up in the tree view alongside these curated options (with download indicators) and can be loaded with one click.
+Any models you place under `localrag.localModelPath` show up in the tree view alongside these curated options (with download indicators) and can be loaded with one click.
 
 **LLM Models** (when agentic planning is enabled): models are available via VS Code Copilot / LM API (no external API key required).
 
@@ -493,8 +493,8 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guid
 ### Development Setup
 
 ```bash
-git clone https://github.com/hyorman/ragnarok.git
-cd ragnarok
+git clone https://github.com/borgius/localrag.git
+cd localrag
 npm install
 npm run watch  # Watch mode for development
 ```

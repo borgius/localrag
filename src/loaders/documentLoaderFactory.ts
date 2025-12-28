@@ -723,7 +723,7 @@ export class DocumentLoaderFactory {
       const response = await fetch(url, {
         method: 'GET',
         headers: {
-          'User-Agent': 'RAGnarok-VSCode-Extension/1.0'
+          'User-Agent': 'LocalRAG-VSCode-Extension/1.0'
         }
       });
 

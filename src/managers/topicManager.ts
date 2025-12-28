@@ -161,6 +161,15 @@ export class TopicManager {
   }
 
   /**
+   * Ensure the manager is initialized
+   */
+  public async ensureInitialized(): Promise<void> {
+    if (!this.isInitialized) {
+      await this.init();
+    }
+  }
+
+  /**
    * Ensure a default topic exists, create if necessary
    * This is called during initialization to support folder watching
    */

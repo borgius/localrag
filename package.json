@@ -8,7 +8,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/borgius/ragnarok"
+    "url": "https://github.com/borgius/localrag"
   },
   "engines": {
     "vscode": "^1.105.0"
@@ -26,15 +26,15 @@
   "main": "./out/src/extension.js",
   "contributes": {
     "configuration": {
-      "title": "RAGnarōk",
+      "title": "LocalRAG",
       "properties": {
-        "ragnarok.localModelPath": {
+        "localrag.localModelPath": {
           "type": "string",
           "default": "",
           "markdownDescription": "Absolute path to a folder containing a locally downloaded Transformers.js-compatible embedding model. Models in this folder appear in the tree view and can be selected directly.",
           "order": 2
         },
-        "ragnarok.topK": {
+        "localrag.topK": {
           "type": "number",
           "default": 5,
           "description": "Number of top results to return from RAG queries",
@@ -42,7 +42,7 @@
           "maximum": 20,
           "order": 3
         },
-        "ragnarok.chunkSize": {
+        "localrag.chunkSize": {
           "type": "number",
           "default": 512,
           "description": "Maximum size of text chunks for embedding (in characters)",
@@ -50,7 +50,7 @@
           "maximum": 2000,
           "order": 4
         },
-        "ragnarok.chunkOverlap": {
+        "localrag.chunkOverlap": {
           "type": "number",
           "default": 50,
           "description": "Overlap between chunks (in characters)",
@@ -58,10 +58,10 @@
           "maximum": 500,
           "order": 5
         },
-        "ragnarok.logLevel": {
+        "localrag.logLevel": {
           "type": "string",
           "default": "info",
-          "description": "Logging verbosity level for the RAGnarōk output channel",
+          "description": "Logging verbosity level for the LocalRAG output channel",
           "enum": [
             "debug",
             "info",
@@ -76,7 +76,7 @@
           ],
           "order": 6
         },
-        "ragnarok.retrievalStrategy": {
+        "localrag.retrievalStrategy": {
           "type": "string",
           "default": "hybrid",
           "markdownDescription": "**Retrieval strategy** for RAG queries (applies to both simple and agentic modes):\n\n- **hybrid** (recommended): 70% semantic + 30% keyword\n- **vector**: Pure semantic similarity\n- **ensemble**: Advanced RRF fusion of vector + BM25 (slower, more accurate)\n- **bm25**: Pure keyword search with BM25 (no embeddings, fast exact matching)\n\n💡 _Can be overridden per query via LM tool parameter_",
@@ -94,13 +94,13 @@
           ],
           "order": 9
         },
-        "ragnarok.useAgenticMode": {
+        "localrag.useAgenticMode": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "**Enable Agentic RAG:** Multi-step retrieval with query planning, iterative refinement, and result evaluation. When disabled, uses simple single-shot retrieval.\n\n📚 [Learn more about Agentic RAG](https://github.com/hyorman/ragnarok#agentic-rag)",
+          "markdownDescription": "**Enable Agentic RAG:** Multi-step retrieval with query planning, iterative refinement, and result evaluation. When disabled, uses simple single-shot retrieval.\n\n📚 [Learn more about Agentic RAG](https://github.com/borgius/localrag#agentic-rag)",
           "order": 10
         },
-        "ragnarok.agenticMaxIterations": {
+        "localrag.agenticMaxIterations": {
           "type": "number",
           "default": 3,
           "markdownDescription": "Maximum retrieval iterations in agentic mode. Higher = more thorough but slower.\n\n⚠️ _Only applies when Agentic Mode is enabled_",
@@ -108,7 +108,7 @@
           "maximum": 10,
           "order": 11
         },
-        "ragnarok.agenticConfidenceThreshold": {
+        "localrag.agenticConfidenceThreshold": {
           "type": "number",
           "default": 0.7,
           "markdownDescription": "Confidence threshold (0-1) to stop retrieval. Lower = more iterations, higher = stops earlier.\n\n⚠️ _Only applies when Agentic Mode is enabled_",
@@ -116,19 +116,19 @@
           "maximum": 1,
           "order": 12
         },
-        "ragnarok.agenticIterativeRefinement": {
+        "localrag.agenticIterativeRefinement": {
           "type": "boolean",
           "default": true,
           "markdownDescription": "Generate follow-up queries to fill information gaps detected during retrieval.\n\n⚠️ _Only applies when Agentic Mode is enabled_",
           "order": 13
         },
-        "ragnarok.agenticUseLLM": {
+        "localrag.agenticUseLLM": {
           "type": "boolean",
           "default": false,
           "markdownDescription": "**Use LLM (Copilot) for intelligent planning:** Uses Copilot for query decomposition and result evaluation instead of rule-based heuristics.\n\n**Requirements:**\n- ✅ GitHub Copilot subscription\n- ✅ GitHub Copilot extension\n\n**Trade-offs:**\n- ✅ Much more intelligent\n- ✅ Context-aware planning\n- ⚠️ 2-3x slower\n- ⚠️ Uses Copilot API quota\n\n⚠️ _Only applies when Agentic Mode is enabled_",
           "order": 14
         },
-        "ragnarok.agenticLLMModel": {
+        "localrag.agenticLLMModel": {
           "type": "string",
           "default": "gpt-4o",
           "markdownDescription": "**LLM model to use** for query planning and evaluation:\n\n- **gpt-4o** (default): Most intelligent, best reasoning\n- **gpt-4o-mini**: Faster, cheaper, still very capable\n- **gpt-3.5-turbo**: Fastest, most economical\n\n**Performance:**\n- gpt-4o: Best quality, slower, more tokens\n- gpt-4o-mini: Good balance\n- gpt-3.5-turbo: Fast, lower quality\n\n⚠️ _Only applies when LLM Mode is enabled_",
@@ -144,19 +144,19 @@
           ],
           "order": 15
         },
-        "ragnarok.agenticIncludeWorkspaceContext": {
+        "localrag.agenticIncludeWorkspaceContext": {
           "type": "boolean",
           "default": true,
           "markdownDescription": "**Include workspace context:** Pass selected code, active file, imports, and symbols to Copilot (like #codebase).\n\n**Includes:**\n- Selected code (max 1000 chars)\n- File imports and symbols\n- Workspace name\n\n**Privacy:** Only relative paths, no sensitive data\n\n⚠️ _Only applies when LLM Mode is enabled_",
           "order": 16
         },
-        "ragnarok.recursiveDirectory": {
+        "localrag.recursiveDirectory": {
           "type": "boolean",
           "default": false,
           "markdownDescription": "**Recursively scan directories** when adding folders to topics. When enabled, all subdirectories will be scanned for supported files. When disabled, only files in the selected directory will be included.",
           "order": 17
         },
-        "ragnarok.includeExtensions": {
+        "localrag.includeExtensions": {
           "type": "array",
           "items": {
             "type": "string"
@@ -165,13 +165,13 @@
           "markdownDescription": "**File extensions to include** when scanning directories for documents. Only files with these extensions will be processed. Leave empty to include all supported extensions.",
           "order": 18
         },
-        "ragnarok.watchFolder": {
+        "localrag.watchFolder": {
           "type": "string",
           "default": "",
           "markdownDescription": "**Folder to watch for changes**: Specify an absolute path to a folder that will be automatically monitored. When files are added, modified, or deleted in this folder, the default topic will be automatically updated. Leave empty to disable folder watching.",
           "order": 19
         },
-        "ragnarok.watchFolderRecursive": {
+        "localrag.watchFolderRecursive": {
           "type": "boolean",
           "default": true,
           "markdownDescription": "**Watch folder recursively**: When enabled, subdirectories of the watch folder will also be monitored for changes. Only applies when `watchFolder` is set.",
@@ -181,74 +181,74 @@
     },
     "commands": [
       {
-        "command": "ragnarok.createTopic",
+        "command": "localrag.createTopic",
         "title": "Create New Topic",
-        "category": "RAG",
+        "category": "LocalRAG",
         "icon": "$(add)"
       },
       {
-        "command": "ragnarok.deleteTopic",
+        "command": "localrag.deleteTopic",
         "title": "Delete Topic",
-        "category": "RAG",
+        "category": "LocalRAG",
         "icon": "$(trash)"
       },
       {
-        "command": "ragnarok.addDocument",
+        "command": "localrag.addDocument",
         "title": "Add Document to Topic",
-        "category": "RAG",
+        "category": "LocalRAG",
         "icon": "$(file-directory-create)"
       },
       {
-        "command": "ragnarok.addGithubRepo",
+        "command": "localrag.addGithubRepo",
         "title": "Add Git Repository to Topic",
-        "category": "RAG",
+        "category": "LocalRAG",
         "icon": "$(github)"
       },
       {
-        "command": "ragnarok.refreshTopics",
+        "command": "localrag.refreshTopics",
         "title": "Refresh Topics",
-        "category": "RAG",
+        "category": "LocalRAG",
         "icon": "$(refresh)"
       },
       {
-        "command": "ragnarok.clearModelCache",
+        "command": "localrag.clearModelCache",
         "title": "Clear Model Cache",
-        "category": "RAG"
+        "category": "LocalRAG"
       },
       {
-        "command": "ragnarok.clearDatabase",
+        "command": "localrag.clearDatabase",
         "title": "Clear Database",
-        "category": "RAG"
+        "category": "LocalRAG"
       },
       {
-        "command": "ragnarok.addGithubToken",
+        "command": "localrag.addGithubToken",
         "title": "Add GitHub Token",
-        "category": "RAG",
+        "category": "LocalRAG",
         "icon": "$(key)"
       },
       {
-        "command": "ragnarok.listGithubTokens",
+        "command": "localrag.listGithubTokens",
         "title": "List GitHub Tokens",
-        "category": "RAG"
+        "category": "LocalRAG"
       },
       {
-        "command": "ragnarok.removeGithubToken",
+        "command": "localrag.removeGithubToken",
         "title": "Remove GitHub Token",
-        "category": "RAG",
+        "category": "LocalRAG",
         "icon": "$(trash)"
       }
     ],
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "ragnarok",
-          "title": "RAG Topics",
+          "id": "localrag",
+          "title": "LocalRAG Topics",
           "icon": "$(database)"
         }
       ]
     },
     "views": {
-      "ragnarok": [
+      "localrag": [
         {
           "id": "ragTopics",
           "name": "Topics",
@@ -259,35 +259,35 @@
     "viewsWelcome": [
       {
         "view": "ragTopics",
-        "contents": "No topics yet. Create your first topic to start using RAG!\n[Create Topic](command:ragnarok.createTopic)\nTopics help organize your documents for semantic search and retrieval-augmented generation with Copilot."
+        "contents": "No topics yet. Create your first topic to start using LocalRAG!\n[Create Topic](command:localrag.createTopic)\nTopics help organize your documents for semantic search and retrieval-augmented generation with Copilot."
       }
     ],
     "menus": {
       "view/title": [
         {
-          "command": "ragnarok.createTopic",
+          "command": "localrag.createTopic",
           "when": "view == ragTopics",
           "group": "navigation@1"
         },
         {
-          "command": "ragnarok.refreshTopics",
+          "command": "localrag.refreshTopics",
           "when": "view == ragTopics",
           "group": "navigation@2"
         }
       ],
       "view/item/context": [
         {
-          "command": "ragnarok.addDocument",
+          "command": "localrag.addDocument",
           "when": "view == ragTopics && viewItem == topic",
           "group": "inline@1"
         },
         {
-          "command": "ragnarok.addGithubRepo",
+          "command": "localrag.addGithubRepo",
           "when": "view == ragTopics && viewItem == topic",
           "group": "inline@2"
         },
         {
-          "command": "ragnarok.deleteTopic",
+          "command": "localrag.deleteTopic",
           "when": "view == ragTopics && viewItem == topic",
           "group": "inline@3"
         }

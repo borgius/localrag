@@ -1,5 +1,5 @@
 /**
- * Central constants for the RAGnarōk extension
+ * Central constants for the LocalRAG extension
  * All identifiers, command names, and configuration keys are defined here
  */
 
@@ -7,8 +7,8 @@
  * Extension identifiers
  */
 export const EXTENSION = {
-  ID: "ragnarok",
-  DISPLAY_NAME: "RAGnarōk",
+  ID: "localrag",
+  DISPLAY_NAME: "LocalRAG",
   DATABASE_DIR: "database",
   TOPICS_INDEX_FILENAME: "topics.json",
   DEFAULT_TOPIC_NAME: "Default",
@@ -18,7 +18,7 @@ export const EXTENSION = {
  * Configuration keys
  */
 export const CONFIG = {
-  ROOT: "ragnarok",
+  ROOT: "localrag",
   // Basic configuration
   LOCAL_MODEL_PATH: "localModelPath",
   TOP_K: "topK",
@@ -52,18 +52,18 @@ export const DEFAULTS = {
  * Command identifiers
  */
 export const COMMANDS = {
-  CREATE_TOPIC: "ragnarok.createTopic",
-  DELETE_TOPIC: "ragnarok.deleteTopic",
-  ADD_DOCUMENT: "ragnarok.addDocument",
-  ADD_GITHUB_REPO: "ragnarok.addGithubRepo",
-  REFRESH_TOPICS: "ragnarok.refreshTopics",
-  CLEAR_MODEL_CACHE: "ragnarok.clearModelCache",
-  CLEAR_DATABASE: "ragnarok.clearDatabase",
-  SET_EMBEDDING_MODEL: "ragnarok.setEmbeddingModel",
+  CREATE_TOPIC: "localrag.createTopic",
+  DELETE_TOPIC: "localrag.deleteTopic",
+  ADD_DOCUMENT: "localrag.addDocument",
+  ADD_GITHUB_REPO: "localrag.addGithubRepo",
+  REFRESH_TOPICS: "localrag.refreshTopics",
+  CLEAR_MODEL_CACHE: "localrag.clearModelCache",
+  CLEAR_DATABASE: "localrag.clearDatabase",
+  SET_EMBEDDING_MODEL: "localrag.setEmbeddingModel",
   // GitHub token management
-  ADD_GITHUB_TOKEN: "ragnarok.addGithubToken",
-  LIST_GITHUB_TOKENS: "ragnarok.listGithubTokens",
-  REMOVE_GITHUB_TOKEN: "ragnarok.removeGithubToken",
+  ADD_GITHUB_TOKEN: "localrag.addGithubToken",
+  LIST_GITHUB_TOKENS: "localrag.listGithubTokens",
+  REMOVE_GITHUB_TOKEN: "localrag.removeGithubToken",
 } as const;
 
 /**
@@ -77,7 +77,7 @@ export const VIEWS = {
  * Global state keys
  */
 export const STATE = {
-  HAS_SHOWN_WELCOME: "ragnarok.hasShownWelcome",
+  HAS_SHOWN_WELCOME: "localrag.hasShownWelcome",
 } as const;
 
 /**

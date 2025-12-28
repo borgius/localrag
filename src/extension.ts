@@ -18,7 +18,7 @@ const logger = new Logger("Extension");
 let fileWatcherService: FileWatcherService | null = null;
 
 export async function activate(context: vscode.ExtensionContext) {
-  logger.info("RAGnarōk extension activating...");
+  logger.info("LocalRAG extension activating...");
 
   try {
     // Initialize TopicManager (singleton with automatic initialization)
@@ -32,13 +32,13 @@ export async function activate(context: vscode.ExtensionContext) {
     logger.info("GitHub token manager initialized");
 
     // Ensure a default topic exists if no topics are present
-    console.log("RAGnarōk: Ensuring default topic exists");
+    console.log("LocalRAG: Ensuring default topic exists");
     await topicManager.ensureInitialized();
     const existingTopics = topicManager.getAllTopics();
     if (existingTopics.length === 0) {
       logger.info("No topics found, creating default topic");
       await topicManager.ensureDefaultTopic();
-      console.log("RAGnarōk: Default topic created");
+      console.log("LocalRAG: Default topic created");
     }
 
     // Register tree view
@@ -119,7 +119,7 @@ export async function activate(context: vscode.ExtensionContext) {
     );
     if (!hasShownWelcome) {
       const response = await vscode.window.showInformationMessage(
-        "Welcome to RAGnarōk! Create topics and add documents to enable RAG queries.",
+        "Welcome to LocalRAG! Create topics and add documents to enable RAG queries.",
         "Create Topic",
         "Learn More"
       );
@@ -128,7 +128,7 @@ export async function activate(context: vscode.ExtensionContext) {
         vscode.commands.executeCommand(COMMANDS.CREATE_TOPIC);
       } else if (response === "Learn More") {
         vscode.env.openExternal(
-          vscode.Uri.parse("https://github.com/hyorman/ragnarok")
+          vscode.Uri.parse("https://github.com/borgius/localrag")
         );
       }
 
@@ -136,11 +136,11 @@ export async function activate(context: vscode.ExtensionContext) {
     }
 
     // Initialize FileWatcherService
-    console.log("RAGnarōk: Initializing FileWatcherService");
+    console.log("LocalRAG: Initializing FileWatcherService");
     fileWatcherService = new FileWatcherService(context, topicManager);
     await fileWatcherService.initialize();
     logger.info("FileWatcherService initialized");
-    console.log("RAGnarōk: FileWatcherService initialized");
+    console.log("LocalRAG: FileWatcherService initialized");
 
     // Register configuration change listener for embedding model
     const configChangeDisposable = vscode.workspace.onDidChangeConfiguration(
@@ -170,7 +170,7 @@ export async function activate(context: vscode.ExtensionContext) {
               await vscode.window.withProgress(
                 {
                   location: vscode.ProgressLocation.Notification,
-                  title: `RAGnarōk: Updating embedding model...`,
+                  title: `LocalRAG: Updating embedding model...`,
                 },
                 async (progress) => {
                   progress.report({ message: "Loading embedding model..." });
@@ -185,7 +185,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
               logger.info(`Embedding model ready: ${model}`);
               vscode.window.showInformationMessage(
-                `RAGnarōk: Embedding model set to "${model}"`
+                `LocalRAG: Embedding model set to "${model}"`
               );
             };
 
@@ -199,7 +199,7 @@ export async function activate(context: vscode.ExtensionContext) {
               error: errorMessage,
             });
             vscode.window.showErrorMessage(
-              `RAGnarōk: Failed to update embedding model: ${errorMessage}`
+              `LocalRAG: Failed to update embedding model: ${errorMessage}`
             );
           }
         }
@@ -243,7 +243,7 @@ export async function activate(context: vscode.ExtensionContext) {
 }
 
 export async function deactivate() {
-  logger.info("RAGnarōk extension deactivating...");
+  logger.info("LocalRAG extension deactivating...");
 
   try {
     // Dispose of FileWatcherService
