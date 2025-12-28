@@ -9,6 +9,7 @@ import * as path from "path";
 import { Logger } from "./logger";
 import { TopicManager } from "../managers/topicManager";
 import { CONFIG, EXTENSION } from "./constants";
+import { ProgressTracker } from "./progressTracker";
 
 export class FileWatcherService {
   private logger: Logger;
@@ -19,6 +20,7 @@ export class FileWatcherService {
   private isRecursive: boolean = true;
   private includeExtensions: string[] = [];
   private defaultTopicId: string | null = null;
+  private progressTracker: ProgressTracker;
   
   // Debounce timer to batch multiple changes
   private updateTimer: NodeJS.Timeout | null = null;
@@ -28,6 +30,7 @@ export class FileWatcherService {
     this.logger = new Logger("FileWatcherService");
     this.context = context;
     this.topicManager = topicManager;
+    this.progressTracker = ProgressTracker.getInstance();
   }
 
   /**
@@ -184,6 +187,17 @@ export class FileWatcherService {
         return;
       }
 
+      // Get topic name for progress tracking
+      const defaultTopic = this.topicManager.getTopic(this.defaultTopicId!);
+      const topicName = defaultTopic?.name || EXTENSION.DEFAULT_TOPIC_NAME;
+
+      // Start progress tracking
+      this.progressTracker.startTracking(
+        this.defaultTopicId!,
+        topicName,
+        existingFiles.length
+      );
+
       // Add documents to default topic
       await vscode.window.withProgress(
         {
@@ -198,9 +212,17 @@ export class FileWatcherService {
           
           // Remove old versions of documents before adding new ones
           // This ensures that modified files don't have duplicate chunks
+          let processedCount = 0;
           for (const filePath of existingFiles) {
             try {
-              progress.report({ message: `Removing old version of ${path.basename(filePath)}...` });
+              const fileName = path.basename(filePath);
+              progress.report({ message: `Removing old version of ${fileName}...` });
+              this.progressTracker.updateProgress(this.defaultTopicId!, {
+                stage: "removing",
+                currentFile: fileName,
+                processedFiles: processedCount,
+              });
+              
               await this.topicManager.removeDocumentByFilePath(
                 this.defaultTopicId!,
                 filePath
@@ -216,12 +238,26 @@ export class FileWatcherService {
           
           // Add documents to default topic
           progress.report({ message: `Adding ${existingFiles.length} file(s)...` });
+          processedCount = 0;
           const results = await this.topicManager.addDocuments(
             this.defaultTopicId!,
             existingFiles,
             {
               onProgress: (pipelineProgress) => {
                 progress.report({ message: pipelineProgress.message });
+                
+                // Update progress tracker with pipeline details
+                this.progressTracker.updateProgress(this.defaultTopicId!, {
+                  stage: pipelineProgress.stage,
+                  currentFile: pipelineProgress.details?.fileName || undefined,
+                  processedFiles: processedCount,
+                  percentage: Math.round((processedCount / existingFiles.length) * 100),
+                });
+                
+                // Increment when a file completes
+                if (pipelineProgress.stage === "complete") {
+                  processedCount++;
+                }
               },
             }
           );
@@ -231,6 +267,9 @@ export class FileWatcherService {
             processed: existingFiles.length,
             successful: successCount,
           });
+
+          // Complete progress tracking
+          this.progressTracker.completeTracking(this.defaultTopicId!);
 
           if (successCount > 0) {
             vscode.window.showInformationMessage(
@@ -242,6 +281,12 @@ export class FileWatcherService {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.logger.error("Failed to process file changes", { error: errorMessage });
+      
+      // Cancel progress tracking on error
+      if (this.defaultTopicId) {
+        this.progressTracker.cancelTracking(this.defaultTopicId);
+      }
+      
       vscode.window.showErrorMessage(
         `Failed to update watched folder: ${errorMessage}`
       );
