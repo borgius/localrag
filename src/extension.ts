@@ -38,6 +38,16 @@ export async function activate(context: vscode.ExtensionContext) {
     logger.info("GitHub token manager initialized");
     console.log("RAGnarōk: GitHubTokenManager initialized");
 
+    // Ensure a default topic exists if no topics are present
+    console.log("RAGnarōk: Ensuring default topic exists");
+    await topicManager.ensureInitialized();
+    const existingTopics = topicManager.getAllTopics();
+    if (existingTopics.length === 0) {
+      logger.info("No topics found, creating default topic");
+      await topicManager.ensureDefaultTopic();
+      console.log("RAGnarōk: Default topic created");
+    }
+
     // Register tree view
     console.log("RAGnarōk: Registering tree view");
     const treeDataProvider = new TopicTreeDataProvider();
