@@ -149,6 +149,7 @@ export async function activate(context: vscode.ExtensionContext) {
         const watchFolderSettings = [
           `${CONFIG.ROOT}.${CONFIG.WATCH_FOLDER}`,
           `${CONFIG.ROOT}.${CONFIG.WATCH_FOLDER_RECURSIVE}`,
+          `${CONFIG.ROOT}.includeExtensions`,
         ];
         const treeViewConfigPaths = [
           `${CONFIG.ROOT}.${CONFIG.RETRIEVAL_STRATEGY}`,
