@@ -8,7 +8,7 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import { Logger } from "./logger";
 import { TopicManager } from "../managers/topicManager";
-import { CONFIG, EXTENSION, DEFAULTS } from "./constants";
+import { CONFIG, EXTENSION } from "./constants";
 
 export class FileWatcherService {
   private logger: Logger;
@@ -39,7 +39,7 @@ export class FileWatcherService {
     const config = vscode.workspace.getConfiguration(CONFIG.ROOT);
     this.watchFolder = config.get<string>(CONFIG.WATCH_FOLDER, "");
     this.isRecursive = config.get<boolean>(CONFIG.WATCH_FOLDER_RECURSIVE, true);
-    this.includeExtensions = config.get<string[]>("includeExtensions", DEFAULTS.INCLUDE_EXTENSIONS);
+    this.includeExtensions = config.get<string[]>("includeExtensions", []);
 
     if (!this.watchFolder || this.watchFolder.trim().length === 0) {
       this.logger.info("No watch folder configured, skipping file watcher setup");
@@ -196,7 +196,26 @@ export class FileWatcherService {
 
           await this.topicManager.ensureInitialized();
           
-          // defaultTopicId is guaranteed to be non-null here due to early return check at line 158-161
+          // Remove old versions of documents before adding new ones
+          // This ensures that modified files don't have duplicate chunks
+          for (const filePath of existingFiles) {
+            try {
+              progress.report({ message: `Removing old version of ${path.basename(filePath)}...` });
+              await this.topicManager.removeDocumentByFilePath(
+                this.defaultTopicId!,
+                filePath
+              );
+            } catch (error) {
+              // If removal fails, log but continue - might be a new file
+              this.logger.debug("Could not remove old document (might be new)", {
+                filePath,
+                error: error instanceof Error ? error.message : String(error),
+              });
+            }
+          }
+          
+          // Add documents to default topic
+          progress.report({ message: `Adding ${existingFiles.length} file(s)...` });
           const results = await this.topicManager.addDocuments(
             this.defaultTopicId!,
             existingFiles,
@@ -238,7 +257,7 @@ export class FileWatcherService {
     const config = vscode.workspace.getConfiguration(CONFIG.ROOT);
     const newWatchFolder = config.get<string>(CONFIG.WATCH_FOLDER, "");
     const newRecursive = config.get<boolean>(CONFIG.WATCH_FOLDER_RECURSIVE, true);
-    const newExtensions = config.get<string[]>("includeExtensions", DEFAULTS.INCLUDE_EXTENSIONS);
+    const newExtensions = config.get<string[]>("includeExtensions", []);
 
     // Check if configuration changed
     const configChanged =
