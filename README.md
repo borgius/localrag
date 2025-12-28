@@ -233,11 +233,41 @@ The RAG tool will:
   "ragnarok.localModelPath": "",
 
   // Retrieval strategy
-  "ragnarok.retrievalStrategy": "hybrid"
+  "ragnarok.retrievalStrategy": "hybrid",
+
+  // Folder watching (optional)
+  "ragnarok.watchFolder": "",  // Absolute path to folder to watch
+  "ragnarok.watchFolderRecursive": true  // Watch subdirectories
 }
 ```
 
 **Note**: GitHub access tokens are now managed via secure Secret Storage, not settings.json. See [GitHub Token Management](#github-token-management) section.
+
+### Automatic Folder Watching
+
+LocalRAG can automatically monitor a folder for changes and keep a default topic up-to-date:
+
+1. **Set the watch folder**: Configure `ragnarok.watchFolder` with an absolute path to the folder you want to monitor.
+2. **Choose recursive mode**: Set `ragnarok.watchFolderRecursive` to `true` to include subdirectories (default) or `false` for only the top-level folder.
+3. **Automatic updates**: When files with supported extensions (`.pdf`, `.md`, `.html`, `.txt`, etc.) are added, modified, or deleted in the watched folder, they are automatically processed and added to the "Default" topic.
+
+**Example configuration:**
+
+```json
+{
+  "ragnarok.watchFolder": "/Users/username/Documents/my-docs",
+  "ragnarok.watchFolderRecursive": true,
+  "ragnarok.includeExtensions": [".pdf", ".md", ".html", ".txt"]
+}
+```
+
+**Benefits:**
+- ✅ Automatic document indexing - no manual "Add Document" needed
+- ✅ Always up-to-date embeddings for your active documents
+- ✅ Supports all document types (PDF, Markdown, HTML, text)
+- ✅ Debounced updates - multiple changes are batched together
+- ✅ Default topic created automatically if no topics exist
+
 
 ### Agentic Mode Settings
 
