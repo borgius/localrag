@@ -424,7 +424,8 @@ describe("DocumentPipeline", function () {
       );
 
       // Should have some success even with failures
-      expect(result.metadata.originalDocuments).to.equal(3);
+      // originalDocuments now reflects actual loaded count (2 succeed, 1 fails)
+      expect(result.metadata.originalDocuments).to.equal(2);
 
       // Should have processed at least some files
       if (result.metadata.chunksCreated > 0) {

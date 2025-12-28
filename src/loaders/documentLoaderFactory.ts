@@ -75,6 +75,12 @@ export interface LoaderOptions {
 
   /** Additional metadata to attach to all documents */
   additionalMetadata?: Record<string, any>;
+
+  /** Load files recursively from directories (applies when filePath is a directory). For GitHub repos, use 'recursive' option. */
+  recursiveDirectory?: boolean;
+
+  /** File extensions to include when loading directories (e.g., ['.html', '.md']). If not specified, all supported extensions are included. */
+  includeExtensions?: string[];
 }
 
 export interface LoadedDocument {
@@ -211,29 +217,81 @@ export class DocumentLoaderFactory {
       count: filePathsOrOptions.length,
     });
 
-    const results = await Promise.allSettled(
-      filePathsOrOptions.map((item) => {
-        const options = typeof item === "string" ? { filePath: item } : item;
-        return this.loadDocument(options);
-      })
-    );
+    // Expand directories to file paths
+    const expandedPaths: LoaderOptions[] = [];
+    for (const item of filePathsOrOptions) {
+      const options = typeof item === "string" ? { filePath: item } : item;
+      
+      // Check if path is a directory (skip for URLs - GitHub and Web)
+      if (!DocumentLoaderFactory.isGitHubUrl(options.filePath) && !DocumentLoaderFactory.isWebUrl(options.filePath)) {
+        const isDir = await this.isDirectory(options.filePath);
+        if (isDir) {
+          // Collect files from directory
+          const files = await this.collectFilesFromDirectory(
+            options.filePath,
+            options.recursiveDirectory ?? false,
+            options.includeExtensions
+          );
+          this.logger.info("Collected files from directory", {
+            directory: options.filePath,
+            fileCount: files.length,
+            recursive: options.recursiveDirectory ?? false,
+          });
+          // Add each file with the same options (except filePath)
+          for (const file of files) {
+            expandedPaths.push({ ...options, filePath: file });
+          }
+          continue;
+        }
+      }
+      
+      // Not a directory (or is a URL), add as-is
+      expandedPaths.push(options);
+    }
 
-    // Separate successful and failed loads
+    if (expandedPaths.length === 0) {
+      this.logger.warn("No files to load after directory expansion");
+      return [];
+    }
+
+    this.logger.info("Loading documents after directory expansion", {
+      totalFiles: expandedPaths.length,
+    });
+
+    // Process files in batches to avoid "too many open files" error
+    const BATCH_SIZE = 50; // Process 50 files at a time
     const successful: LoadedDocument[] = [];
     const failed: Array<{ path: string; error: string }> = [];
 
-    results.forEach((result, index) => {
-      if (result.status === "fulfilled") {
-        successful.push(result.value);
-      } else {
-        const item = filePathsOrOptions[index];
-        const filePath = typeof item === "string" ? item : item.filePath;
-        failed.push({
-          path: filePath,
-          error: result.reason.message || String(result.reason),
-        });
-      }
-    });
+    for (let i = 0; i < expandedPaths.length; i += BATCH_SIZE) {
+      const batch = expandedPaths.slice(i, i + BATCH_SIZE);
+      const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
+      const totalBatches = Math.ceil(expandedPaths.length / BATCH_SIZE);
+
+      this.logger.info(`Processing batch ${batchNumber}/${totalBatches}`, {
+        batchSize: batch.length,
+        processedSoFar: i,
+        total: expandedPaths.length,
+      });
+
+      const results = await Promise.allSettled(
+        batch.map((options) => this.loadDocument(options))
+      );
+
+      // Separate successful and failed loads for this batch
+      results.forEach((result, batchIndex) => {
+        const actualIndex = i + batchIndex;
+        if (result.status === "fulfilled") {
+          successful.push(result.value);
+        } else {
+          const options = expandedPaths[actualIndex];
+          failed.push({
+            path: options.filePath,
+            error: result.reason.message || String(result.reason),
+          });
+        }
+      });
+    }
 
     if (failed.length > 0) {
       this.logger.warn("Some documents failed to load", {
@@ -438,7 +496,8 @@ export class DocumentLoaderFactory {
   }
 
   /**
-   * Load HTML document using Cheerio loader for clean text extraction
+   * Load HTML document using simple HTML text extraction
+   * Removes HTML tags and extracts text content
    */
   private async loadHTML(
     filePath: string,
@@ -447,26 +506,38 @@ export class DocumentLoaderFactory {
     this.logger.debug("Loading HTML", { filePath });
 
     try {
-      // Read file as text first
+      // Simple HTML parsing without external dependencies
+      // Extract title
       const htmlContent = await fs.readFile(filePath, "utf-8");
+      const titleMatch = htmlContent.match(/<title[^>]*>([^<]+)<\/title>/i);
+      const title = titleMatch ? titleMatch[1].trim() : path.basename(filePath);
 
-      // Create a file:// URL for the loader
-      const fileUrl = `file://${path.resolve(filePath)}`;
+      // Remove script and style tags with their content
+      let text = htmlContent
+        .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, " ")
+        .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, " ");
 
-      // Use CheerioWebBaseLoader with custom HTML content
-      // Note: We need to use a workaround since CheerioWebBaseLoader expects URLs
-      // We'll create a simple document directly
-      const $ = cheerio.load(htmlContent);
+      // Remove HTML comments
+      text = text.replace(/<!--[\s\S]*?-->/g, " ");
 
-      // Extract text content, removing script and style tags
-      $("script, style").remove();
+      // Remove all HTML tags
+      text = text.replace(/<[^>]+>/g, " ");
 
-      // Use selector if provided, otherwise get all text
-      const selector = options.selector || "body";
-      const text = $(selector).text().trim();
+      // Decode common HTML entities
+      text = text
+        .replace(/&nbsp;/g, " ")
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&apos;/g, "'");
 
-      // Extract title if available
-      const title = $("title").text().trim() || path.basename(filePath);
+      // Clean up whitespace
+      text = text
+        .replace(/\s+/g, " ") // Multiple spaces to single space
+        .replace(/\n\s*\n/g, "\n") // Multiple newlines to single
+        .trim();
 
       const document = new LangChainDocument({
         pageContent: text,
@@ -699,5 +770,71 @@ export class DocumentLoaderFactory {
       });
       throw error;
     }
+  }
+
+  /**
+   * Check if a path is a directory
+   */
+  private async isDirectory(filePath: string): Promise<boolean> {
+    try {
+      const stats = await fs.stat(filePath);
+      return stats.isDirectory();
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * Recursively collect files from a directory
+   * @param dirPath - Directory path to scan
+   * @param recursive - Whether to scan subdirectories
+   * @param includeExtensions - File extensions to include (e.g., ['.html', '.md']). If not specified, all supported extensions are included.
+   * @returns Array of file paths
+   */
+  private async collectFilesFromDirectory(
+    dirPath: string,
+    recursive: boolean,
+    includeExtensions?: string[]
+  ): Promise<string[]> {
+    const files: string[] = [];
+    const extensionsToInclude = includeExtensions || DocumentLoaderFactory.getSupportedExtensions();
+
+    try {
+      const entries = await fs.readdir(dirPath, { withFileTypes: true });
+
+      for (const entry of entries) {
+        const fullPath = path.join(dirPath, entry.name);
+
+        if (entry.isDirectory()) {
+          if (recursive) {
+            // Recursively collect files from subdirectory
+            const subFiles = await this.collectFilesFromDirectory(
+              fullPath,
+              recursive,
+              includeExtensions
+            );
+            files.push(...subFiles);
+          }
+        } else if (entry.isFile()) {
+          // Check if file extension is supported
+          const ext = path.extname(entry.name).toLowerCase();
+          if (extensionsToInclude.includes(ext)) {
+            files.push(fullPath);
+          }
+        }
+      }
+    } catch (error) {
+      this.logger.error("Failed to read directory", {
+        error: error instanceof Error ? error.message : String(error),
+        dirPath,
+      });
+      throw new Error(
+        `Failed to read directory ${dirPath}: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+
+    return files;
   }
 }
