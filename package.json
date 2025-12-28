@@ -1,14 +1,14 @@
 {
-  "name": "ragnarok",
-  "displayName": "RAGnarōk - Local RAG for Copilot",
+  "name": "localrag",
+  "displayName": "LocalRAG - Enhanced Local RAG for VS Code",
   "description": "Retrieval-Augmented Generation extension for VSCode with local sentence transformers and semantic chunking",
-  "version": "0.2.6",
-  "publisher": "hyorman",
+  "version": "0.2.7",
+  "publisher": "borgius",
   "icon": "assets/icon.png",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/hyorman/ragnarok"
+    "url": "https://github.com/borgius/ragnarok"
   },
   "engines": {
     "vscode": "^1.105.0"
@@ -149,6 +149,33 @@
           "default": true,
           "markdownDescription": "**Include workspace context:** Pass selected code, active file, imports, and symbols to Copilot (like #codebase).\n\n**Includes:**\n- Selected code (max 1000 chars)\n- File imports and symbols\n- Workspace name\n\n**Privacy:** Only relative paths, no sensitive data\n\n⚠️ _Only applies when LLM Mode is enabled_",
           "order": 16
+        },
+        "ragnarok.recursiveDirectory": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "**Recursively scan directories** when adding folders to topics. When enabled, all subdirectories will be scanned for supported files. When disabled, only files in the selected directory will be included.",
+          "order": 17
+        },
+        "ragnarok.includeExtensions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [".pdf", ".md", ".markdown", ".html", ".htm", ".txt"],
+          "markdownDescription": "**File extensions to include** when scanning directories for documents. Only files with these extensions will be processed. Leave empty to include all supported extensions.",
+          "order": 18
+        },
+        "ragnarok.watchFolder": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "**Folder to watch for changes**: Specify an absolute path to a folder that will be automatically monitored. When files are added, modified, or deleted in this folder, the default topic will be automatically updated. Leave empty to disable folder watching.",
+          "order": 19
+        },
+        "ragnarok.watchFolderRecursive": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "**Watch folder recursively**: When enabled, subdirectories of the watch folder will also be monitored for changes. Only applies when `watchFolder` is set.",
+          "order": 20
         }
       }
     },
@@ -320,30 +347,30 @@
     ]
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
+    "vscode:prepublish": "pnpm exec tsc -p ./",
     "compile": "tsc -p ./",
     "compile:tests": "tsc -p ./tsconfig.test.json",
     "watch": "tsc -watch -p ./",
     "watch:tests": "tsc -watch -p ./tsconfig.test.json",
     "lint": "eslint src",
     "package:dev": "node scripts/package-dev.js",
-    "package": "npm run package:win32-x64 && npm run package:win32-arm64 && npm run package:darwin-x64 && npm run package:darwin-arm64 && npm run package:linux-x64 && npm run package:linux-arm64",
-    "package:win32-x64": "node scripts/install-platform-deps.js win32-x64 && vsce package --target win32-x64",
-    "package:win32-arm64": "node scripts/install-platform-deps.js win32-arm64 && vsce package --target win32-arm64",
-    "package:darwin-x64": "node scripts/install-platform-deps.js darwin-x64 && vsce package --target darwin-x64",
-    "package:darwin-arm64": "node scripts/install-platform-deps.js darwin-arm64 && vsce package --target darwin-arm64",
-    "package:linux-x64": "node scripts/install-platform-deps.js linux-x64 && vsce package --target linux-x64",
-    "package:linux-arm64": "node scripts/install-platform-deps.js linux-arm64 && vsce package --target linux-arm64",
-    "publish": "npm run publish:win32-x64 && npm run publish:win32-arm64 && npm run publish:darwin-x64 && npm run publish:darwin-arm64 && npm run publish:linux-x64 && npm run publish:linux-arm64",
-    "publish:win32-x64": "node scripts/install-platform-deps.js win32-x64 && vsce publish --target win32-x64",
-    "publish:win32-arm64": "node scripts/install-platform-deps.js win32-arm64 && vsce publish --target win32-arm64",
-    "publish:darwin-x64": "node scripts/install-platform-deps.js darwin-x64 && vsce publish --target darwin-x64",
-    "publish:darwin-arm64": "node scripts/install-platform-deps.js darwin-arm64 && vsce publish --target darwin-arm64",
-    "publish:linux-x64": "node scripts/install-platform-deps.js linux-x64 && vsce publish --target linux-x64",
-    "publish:linux-arm64": "node scripts/install-platform-deps.js linux-arm64 && vsce publish --target linux-arm64",
-    "pretest": "npm run compile && npm run compile:tests",
+    "package": "pnpm run package:win32-x64 && pnpm run package:win32-arm64 && pnpm run package:darwin-x64 && pnpm run package:darwin-arm64 && pnpm run package:linux-x64 && pnpm run package:linux-arm64",
+    "package:win32-x64": "node scripts/install-platform-deps.js win32-x64 && pnpm exec vsce package --target win32-x64 --no-dependencies",
+    "package:win32-arm64": "node scripts/install-platform-deps.js win32-arm64 && pnpm exec vsce package --target win32-arm64 --no-dependencies",
+    "package:darwin-x64": "node scripts/install-platform-deps.js darwin-x64 && pnpm exec vsce package --target darwin-x64 --no-dependencies",
+    "package:darwin-arm64": "node scripts/install-platform-deps.js darwin-arm64 && pnpm exec vsce package --target darwin-arm64 --no-dependencies",
+    "package:linux-x64": "node scripts/install-platform-deps.js linux-x64 && pnpm exec vsce package --target linux-x64 --no-dependencies",
+    "package:linux-arm64": "node scripts/install-platform-deps.js linux-arm64 && pnpm exec vsce package --target linux-arm64 --no-dependencies",
+    "publish": "pnpm run publish:win32-x64 && pnpm run publish:win32-arm64 && pnpm run publish:darwin-x64 && pnpm run publish:darwin-arm64 && pnpm run publish:linux-x64 && pnpm run publish:linux-arm64",
+    "publish:win32-x64": "node scripts/install-platform-deps.js win32-x64 && pnpm exec vsce publish --target win32-x64 --no-dependencies",
+    "publish:win32-arm64": "node scripts/install-platform-deps.js win32-arm64 && pnpm exec vsce publish --target win32-arm64 --no-dependencies",
+    "publish:darwin-x64": "node scripts/install-platform-deps.js darwin-x64 && pnpm exec vsce publish --target darwin-x64 --no-dependencies",
+    "publish:darwin-arm64": "node scripts/install-platform-deps.js darwin-arm64 && pnpm exec vsce publish --target darwin-arm64 --no-dependencies",
+    "publish:linux-x64": "node scripts/install-platform-deps.js linux-x64 && pnpm exec vsce publish --target linux-x64 --no-dependencies",
+    "publish:linux-arm64": "node scripts/install-platform-deps.js linux-arm64 && pnpm exec vsce publish --target linux-arm64 --no-dependencies",
+    "pretest": "pnpm run compile && pnpm run compile:tests",
     "test": "node ./out/test/test/runTest.js",
-    "inspect:chunks": "npm run compile && node scripts/inspect-chunks.js",
+    "inspect:chunks": "pnpm run compile && node scripts/inspect-chunks.js",
     "clean": "rimraf out && rimraf node_modules",
     "clean:test": "rimraf out/test"
   },
@@ -379,7 +406,8 @@
     "cheerio": "^1.1.2",
     "ignore": "^5.3.2",
     "langchain": "^1.0.0",
-    "pdf-parse": "^1.1.1"
+    "pdf-parse": "^1.1.1",
+    "zod": "^3.22.4"
   },
   "optionalDependencies": {
     "@img/sharp-darwin-arm64": "^0.34.5",

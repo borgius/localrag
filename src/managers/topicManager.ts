@@ -85,29 +85,7 @@ export class TopicManager {
         );
       }
       TopicManager.instance = new TopicManager(context);
-      // Automatically initialize on first getInstance call
-      TopicManager.initPromise = TopicManager.instance.init();
-    }
-
-    // Wait for initialization to complete
-    if (TopicManager.initPromise) {
-      try {
-        await TopicManager.initPromise;
-      } catch (error) {
-        // Clear instance on failure to allow retry
-        TopicManager.instance = null as any;
-        TopicManager.initPromise = null;
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        throw new Error(`TopicManager initialization failed: ${errorMessage}`);
-      } finally {
-        TopicManager.initPromise = null;
-      }
-    }
-
-    // Verify initialization succeeded
-    if (!TopicManager.instance.isInitialized) {
-      TopicManager.instance = null as any;
-      throw new Error("TopicManager initialization failed - instance is not initialized");
+      // Don't auto-initialize - will be initialized lazily when needed
     }
 
     return TopicManager.instance;
@@ -158,6 +136,56 @@ export class TopicManager {
       });
       throw error;
     }
+  }
+
+  public async ensureInitialized(): Promise<void> {
+    if (this.isInitialized) {
+      return;
+    }
+
+    if (TopicManager.initPromise) {
+      await TopicManager.initPromise;
+      return;
+    }
+
+    TopicManager.initPromise = this.init();
+    try {
+      await TopicManager.initPromise;
+    } catch (error) {
+      TopicManager.initPromise = null;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to initialize TopicManager: ${errorMessage}`);
+    } finally {
+      TopicManager.initPromise = null;
+    }
+  }
+
+  /**
+   * Ensure a default topic exists, create if necessary
+   * This is called during initialization to support folder watching
+   */
+  public async ensureDefaultTopic(): Promise<Topic> {
+    await this.ensureInitialized();
+    
+    if (!this.topicsIndex) {
+      throw new Error("TopicManager not initialized");
+    }
+
+    // Look for existing default topic
+    let defaultTopic = Object.values(this.topicsIndex.topics).find(
+      t => t.name === EXTENSION.DEFAULT_TOPIC_NAME
+    );
+
+    if (!defaultTopic) {
+      // Create default topic
+      this.logger.info("Creating default topic for folder watching");
+      defaultTopic = await this.createTopic({
+        name: EXTENSION.DEFAULT_TOPIC_NAME,
+        description: "Automatically managed topic for watched folder",
+      });
+    }
+
+    return defaultTopic;
   }
 
   /**
@@ -380,6 +408,102 @@ export class TopicManager {
       return [];
     }
     return Array.from(documents.values());
+  }
+
+  /**
+   * Remove a document from a topic by file path
+   * This is used when a file is modified to remove old chunks before adding new ones
+   */
+  public async removeDocumentByFilePath(
+    topicId: string,
+    filePath: string
+  ): Promise<boolean> {
+    this.logger.info("Removing document by file path", { topicId, filePath });
+
+    try {
+      if (!this.topicsIndex || !this.vectorStoreFactory) {
+        throw new Error("TopicManager not initialized");
+      }
+
+      const topic = this.topicsIndex.topics[topicId];
+      if (!topic) {
+        throw new Error(`Topic not found: ${topicId}`);
+      }
+
+      // Find document with matching file path
+      const documents = this.topicDocuments.get(topicId);
+      if (!documents) {
+        this.logger.debug("No documents found for topic", { topicId });
+        return false;
+      }
+
+      let documentToRemove: TopicDocument | null = null;
+      for (const doc of documents.values()) {
+        if (doc.filePath === filePath) {
+          documentToRemove = doc;
+          break;
+        }
+      }
+
+      if (!documentToRemove) {
+        this.logger.debug("Document with file path not found", { filePath });
+        return false;
+      }
+
+      // Remove document metadata from cache
+      documents.delete(documentToRemove.id);
+
+      // Remove chunks from vector store
+      // We need to delete chunks that match this document's file path
+      const vectorStore = await this.getVectorStore(topicId);
+      if (vectorStore) {
+        // LanceDB allows us to delete by filter
+        // We'll need to use the documentName metadata to filter
+        try {
+          // Get the store and delete matching records
+          const lanceTable = (vectorStore as any).table;
+          if (lanceTable) {
+            // Delete all records where metadata.documentName matches the file name
+            const fileName = path.basename(filePath);
+            await lanceTable.delete(`documentName = '${fileName.replace(/'/g, "''")}'`);
+            this.logger.info("Chunks removed from vector store", {
+              documentId: documentToRemove.id,
+              fileName,
+            });
+          }
+        } catch (error) {
+          this.logger.warn("Failed to remove chunks from vector store", {
+            error: error instanceof Error ? error.message : String(error),
+            documentId: documentToRemove.id,
+          });
+          // Continue even if chunk removal fails - metadata is already removed
+        }
+      }
+
+      // Update topic document count
+      topic.documentCount = documents.size;
+      topic.updatedAt = Date.now();
+      this.topicsIndex.lastUpdated = Date.now();
+      await this.saveTopicsIndex();
+
+      // Persist document metadata to disk
+      await this.saveTopicDocuments(topicId);
+
+      this.logger.info("Document removed successfully", {
+        topicId,
+        documentId: documentToRemove.id,
+        filePath,
+      });
+
+      return true;
+    } catch (error) {
+      this.logger.error("Failed to remove document", {
+        error: error instanceof Error ? error.message : String(error),
+        topicId,
+        filePath,
+      });
+      throw error;
+    }
   }
 
   /**

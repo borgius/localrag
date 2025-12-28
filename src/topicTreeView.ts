@@ -9,6 +9,7 @@ import { Topic, Document, RetrievalStrategy } from "./utils/types";
 import { Logger } from "./utils/logger";
 import { CONFIG, COMMANDS } from "./utils/constants";
 import { EmbeddingService, type AvailableModel } from "./embeddings/embeddingService";
+import { ProgressTracker, IndexingProgress } from "./utils/progressTracker";
 
 const logger = new Logger("TopicTreeView");
 
@@ -24,10 +25,21 @@ export class TopicTreeDataProvider
 
   private topicManager: Promise<TopicManager>;
   private embeddingService: EmbeddingService;
+  private progressTracker: ProgressTracker;
 
   constructor() {
     this.topicManager = TopicManager.getInstance();
     this.embeddingService = EmbeddingService.getInstance();
+    this.progressTracker = ProgressTracker.getInstance();
+
+    // Listen to progress updates and refresh tree view
+    this.progressTracker.on("progress", () => {
+      this.refresh();
+    });
+
+    this.progressTracker.on("complete", () => {
+      this.refresh();
+    });
   }
 
   refresh(): void {
@@ -51,6 +63,8 @@ export class TopicTreeDataProvider
         items.push(new TopicTreeItem(null, "config-status"));
 
         // Add topics
+        const topicManager = await this.topicManager;
+        await topicManager.ensureInitialized();
         const topics = await topicManager.getAllTopics();
         logger.debug(`Loaded ${topics.length} topics for tree view`);
 
@@ -87,7 +101,15 @@ export class TopicTreeDataProvider
         // Show statistics and documents for this topic
         const items: TopicTreeItem[] = [];
 
+        // Check for active indexing progress
+        const progress = this.progressTracker.getProgress(element.topic.id);
+        if (progress) {
+          items.push(new TopicTreeItem(progress, "progress"));
+        }
+
         // Add stats item
+        const topicManager = await this.topicManager;
+        await topicManager.ensureInitialized();
         const stats = await topicManager.getTopicStats(element.topic.id);
         if (stats) {
           items.push(new TopicTreeItem(stats, "topic-stats"));
@@ -237,7 +259,7 @@ export class TopicTreeDataProvider
 
 export class TopicTreeItem extends vscode.TreeItem {
   constructor(
-    public readonly data: Topic | Document | any,
+    public readonly data: Topic | Document | IndexingProgress | any,
     public readonly type:
       | "topic"
       | "document"
@@ -246,6 +268,7 @@ export class TopicTreeItem extends vscode.TreeItem {
       | "local-models"
       | "topic-stats"
       | "stat-item"
+      | "progress"
   ) {
     super(
       TopicTreeItem.getLabel(data, type),
@@ -271,6 +294,8 @@ export class TopicTreeItem extends vscode.TreeItem {
         return "📊 Statistics";
       case "stat-item":
         return TopicTreeItem.formatStatLabel(data);
+      case "progress":
+        return TopicTreeItem.formatProgressLabel(data);
       default:
         return "Unknown";
     }
@@ -341,6 +366,19 @@ export class TopicTreeItem extends vscode.TreeItem {
     }
   }
 
+  private static formatProgressLabel(progress: IndexingProgress): string {
+    const remaining = progress.totalFiles - progress.processedFiles;
+    const percentage = progress.percentage;
+    
+    // Create a simple text-based progress bar
+    const barLength = 10;
+    const filled = Math.round((percentage / 100) * barLength);
+    const empty = barLength - filled;
+    const bar = "█".repeat(filled) + "░".repeat(empty);
+    
+    return `⏳ Indexing: ${bar} ${percentage}% (${remaining} files remaining)`;
+  }
+
   private setupTreeItem(data: any, type: string): void {
     switch (type) {
       case "topic":
@@ -397,6 +435,14 @@ export class TopicTreeItem extends vscode.TreeItem {
         this.tooltip = `${data.key}: ${data.value}`;
         this.contextValue = "stat-item";
         this.iconPath = new vscode.ThemeIcon("symbol-numeric");
+        break;
+
+      case "progress":
+        const progress = data as IndexingProgress;
+        this.tooltip = `Processing: ${progress.currentFile || "..."}`;
+        this.description = progress.stage;
+        this.contextValue = "progress";
+        this.iconPath = new vscode.ThemeIcon("loading~spin");
         break;
     }
   }

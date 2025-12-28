@@ -12,60 +12,60 @@ import { TopicTreeDataProvider } from "./topicTreeView";
 import { VIEWS, STATE, COMMANDS, CONFIG } from "./utils/constants";
 import { Logger } from "./utils/logger";
 import { GitHubTokenManager } from "./utils/githubTokenManager";
+import { FileWatcherService } from "./utils/fileWatcherService";
 
 const logger = new Logger("Extension");
+let fileWatcherService: FileWatcherService | null = null;
 
 export async function activate(context: vscode.ExtensionContext) {
+  console.log("RAGnarōk: Activation started");
   logger.info("RAGnarōk extension activating...");
 
   try {
     // Initialize TopicManager (singleton with automatic initialization)
+    console.log("RAGnarōk: Initializing TopicManager");
     const topicManager = await TopicManager.getInstance(context);
+    console.log("RAGnarōk: TopicManager initialized");
 
-    // Initialize embedding service instance (will load model on first use)
+    // Initialize embedding service instance (lazy initialization - will load model on first use)
+    console.log("RAGnarōk: Initializing EmbeddingService");
     const embeddingService = EmbeddingService.getInstance();
+    console.log("RAGnarōk: EmbeddingService initialized");
 
     // Initialize GitHub token manager
+    console.log("RAGnarōk: Initializing GitHubTokenManager");
     GitHubTokenManager.initialize(context);
     logger.info("GitHub token manager initialized");
+    console.log("RAGnarōk: GitHubTokenManager initialized");
+
+    // Ensure a default topic exists if no topics are present
+    console.log("RAGnarōk: Ensuring default topic exists");
+    await topicManager.ensureInitialized();
+    const existingTopics = topicManager.getAllTopics();
+    if (existingTopics.length === 0) {
+      logger.info("No topics found, creating default topic");
+      await topicManager.ensureDefaultTopic();
+      console.log("RAGnarōk: Default topic created");
+    }
 
     // Register tree view
+    console.log("RAGnarōk: Registering tree view");
     const treeDataProvider = new TopicTreeDataProvider();
     const treeView = vscode.window.createTreeView(VIEWS.RAG_TOPICS, {
       treeDataProvider,
       showCollapseAll: true,
     });
     context.subscriptions.push(treeView);
+    console.log("RAGnarōk: Tree view registered");
 
     // Register commands
+    console.log("RAGnarōk: Registering commands");
     await CommandHandler.registerCommands(context, treeDataProvider);
+    console.log("RAGnarōk: Commands registered");
 
-    // Load topics with error handling
-    try {
-      const topics = await topicManager.getAllTopics();
-      logger.info(`Loaded ${topics.length} topics`);
-    } catch (dbError) {
-      logger.error("Failed to load topics", { error: dbError });
-      // If topics index is corrupted, offer to reset it
-      const response = await vscode.window.showErrorMessage(
-        "Failed to load RAG topics. Would you like to reset the database?",
-        "Reset Database",
-        "Cancel"
-      );
-
-      if (response === "Reset Database") {
-        // Delete all topics to reset
-        const topics = await topicManager.getAllTopics();
-        for (const topic of topics) {
-          await topicManager.deleteTopic(topic.id);
-        }
-        vscode.window.showInformationMessage(
-          "Database has been reset successfully."
-        );
-        logger.info("Database reset completed");
-      }
-      // Don't throw - let the extension continue working
-    }
+    // Don't load topics during activation - let them load lazily when accessed
+    logger.info("RAGnarōk extension activated successfully");
+    console.log("RAGnarōk: Activation successful");
 
     // Register RAG tool for Copilot/LLM agents
     try {
@@ -123,10 +123,22 @@ export async function activate(context: vscode.ExtensionContext) {
       await context.globalState.update(STATE.HAS_SHOWN_WELCOME, true);
     }
 
+    // Initialize FileWatcherService
+    console.log("RAGnarōk: Initializing FileWatcherService");
+    fileWatcherService = new FileWatcherService(context, topicManager);
+    await fileWatcherService.initialize();
+    logger.info("FileWatcherService initialized");
+    console.log("RAGnarōk: FileWatcherService initialized");
+
     // Register configuration change listener for embedding model
     const configChangeDisposable = vscode.workspace.onDidChangeConfiguration(
       async (event) => {
         const localModelPathSetting = `${CONFIG.ROOT}.${CONFIG.LOCAL_MODEL_PATH}`;
+        const watchFolderSettings = [
+          `${CONFIG.ROOT}.${CONFIG.WATCH_FOLDER}`,
+          `${CONFIG.ROOT}.${CONFIG.WATCH_FOLDER_RECURSIVE}`,
+          `${CONFIG.ROOT}.includeExtensions`,
+        ];
         const treeViewConfigPaths = [
           `${CONFIG.ROOT}.${CONFIG.RETRIEVAL_STRATEGY}`,
           `${CONFIG.ROOT}.${CONFIG.USE_AGENTIC_MODE}`,
@@ -153,6 +165,7 @@ export async function activate(context: vscode.ExtensionContext) {
                   await embeddingService.initialize();
 
                   progress.report({ message: "Reinitializing services..." });
+                  await topicManager.ensureInitialized();
                   await topicManager.reinitializeWithNewModel();
                 }
               );
@@ -180,6 +193,23 @@ export async function activate(context: vscode.ExtensionContext) {
           }
         }
 
+        // Handle watch folder configuration changes
+        const affectsWatchFolder = watchFolderSettings.some((configPath) =>
+          event.affectsConfiguration(configPath)
+        );
+        if (affectsWatchFolder && fileWatcherService) {
+          logger.info("Watch folder configuration changed");
+          try {
+            await fileWatcherService.updateConfiguration();
+          } catch (error) {
+            const errorMessage =
+              error instanceof Error ? error.message : String(error);
+            logger.error("Failed to update file watcher configuration", {
+              error: errorMessage,
+            });
+          }
+        }
+
         const affectsTreeViewConfig = treeViewConfigPaths.some((configPath) =>
           event.affectsConfiguration(configPath)
         );
@@ -196,7 +226,9 @@ export async function activate(context: vscode.ExtensionContext) {
     logger.info("Extension activation complete");
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error("RAGnarōk: Failed to activate extension", error);
     logger.error("Failed to activate extension", { error: errorMessage });
+    vscode.window.showErrorMessage(`RAGnarōk activation failed: ${errorMessage}`);
     throw error; // Re-throw to signal activation failure
   }
 }
@@ -205,6 +237,12 @@ export async function deactivate() {
   logger.info("RAGnarōk extension deactivating...");
 
   try {
+    // Dispose of FileWatcherService
+    if (fileWatcherService) {
+      await fileWatcherService.dispose();
+      fileWatcherService = null;
+    }
+
     // Dispose of TopicManager (includes all caches and dependencies)
     const topicManager = await TopicManager.getInstance();
     topicManager.dispose();

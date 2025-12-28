@@ -20,8 +20,9 @@ src/**
 **/.tsconfig.test.json
 **/.eslintrc.json
 
-# Dependencies - exclude all node_modules by default
-node_modules/**
+# Dependencies - let vsce handle node_modules inclusion automatically
+# We previously manually managed this, but it causes issues with pnpm symlinks and missing dependencies
+# node_modules/**
 
 # LangChain dependencies (CRITICAL - needed for document loading and vector stores)
 !node_modules/@langchain/**
