@@ -8,7 +8,7 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import { Logger } from "./logger";
 import { TopicManager } from "../managers/topicManager";
-import { CONFIG, EXTENSION } from "./constants";
+import { CONFIG, EXTENSION, DEFAULTS } from "./constants";
 
 export class FileWatcherService {
   private logger: Logger;
@@ -39,7 +39,7 @@ export class FileWatcherService {
     const config = vscode.workspace.getConfiguration(CONFIG.ROOT);
     this.watchFolder = config.get<string>(CONFIG.WATCH_FOLDER, "");
     this.isRecursive = config.get<boolean>(CONFIG.WATCH_FOLDER_RECURSIVE, true);
-    this.includeExtensions = config.get<string[]>("includeExtensions", [".pdf", ".md", ".markdown", ".html", ".htm", ".txt"]);
+    this.includeExtensions = config.get<string[]>("includeExtensions", DEFAULTS.INCLUDE_EXTENSIONS as unknown as string[]);
 
     if (!this.watchFolder || this.watchFolder.trim().length === 0) {
       this.logger.info("No watch folder configured, skipping file watcher setup");
@@ -64,40 +64,14 @@ export class FileWatcherService {
       return;
     }
 
-    // Ensure default topic exists
-    await this.ensureDefaultTopic();
+    // Ensure default topic exists (reuses TopicManager's method)
+    await this.topicManager.ensureInitialized();
+    const defaultTopic = await this.topicManager.ensureDefaultTopic();
+    this.defaultTopicId = defaultTopic.id;
+    this.logger.info("Default topic ready for folder watching", { topicId: this.defaultTopicId });
 
     // Setup file watcher
     await this.setupWatcher();
-  }
-
-  /**
-   * Ensure a default topic exists, create if necessary
-   */
-  private async ensureDefaultTopic(): Promise<void> {
-    this.logger.info("Ensuring default topic exists");
-    
-    await this.topicManager.ensureInitialized();
-    const topics = this.topicManager.getAllTopics();
-    
-    // Look for existing default topic
-    let defaultTopic = topics.find(t => t.name === EXTENSION.DEFAULT_TOPIC_NAME);
-    
-    if (!defaultTopic) {
-      // Create default topic
-      this.logger.info("Creating default topic");
-      defaultTopic = await this.topicManager.createTopic({
-        name: EXTENSION.DEFAULT_TOPIC_NAME,
-        description: "Automatically managed topic for watched folder",
-      });
-      
-      vscode.window.showInformationMessage(
-        `Created default topic "${EXTENSION.DEFAULT_TOPIC_NAME}" for folder watching`
-      );
-    }
-    
-    this.defaultTopicId = defaultTopic.id;
-    this.logger.info("Default topic ready", { topicId: this.defaultTopicId });
   }
 
   /**
@@ -261,7 +235,7 @@ export class FileWatcherService {
     const config = vscode.workspace.getConfiguration(CONFIG.ROOT);
     const newWatchFolder = config.get<string>(CONFIG.WATCH_FOLDER, "");
     const newRecursive = config.get<boolean>(CONFIG.WATCH_FOLDER_RECURSIVE, true);
-    const newExtensions = config.get<string[]>("includeExtensions", [".pdf", ".md", ".markdown", ".html", ".htm", ".txt"]);
+    const newExtensions = config.get<string[]>("includeExtensions", DEFAULTS.INCLUDE_EXTENSIONS as unknown as string[]);
 
     // Check if configuration changed
     const configChanged =
