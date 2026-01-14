@@ -4,6 +4,7 @@
  */
 
 import * as vscode from "vscode";
+import * as fs from "fs/promises";
 import { TopicManager } from "./managers/topicManager";
 import { EmbeddingService } from "./embeddings/embeddingService";
 import { TopicTreeDataProvider } from "./topicTreeView";
@@ -354,62 +355,122 @@ export class CommandHandler {
         );
         return;
       }
+      
+      // Ask whether the user wants to select files or folders.
+      // Some platforms/OS dialogs don't handle mixed file+folder mode well,
+      // so present a choice and open the dialog in the selected mode.
+      const selectionMode = await vscode.window.showQuickPick(
+        [
+          { label: "Files", description: "Select one or more files", value: "files" },
+          { label: "Folders", description: "Select one or more folders", value: "folders" },
+        ],
+        { placeHolder: "Add documents: choose Files or Folders" }
+      );
 
-      // Select files (can select multiple)
-      const fileUris = await vscode.window.showOpenDialog({
-        canSelectFiles: true,
-        canSelectFolders: false,
-        canSelectMany: true, // Allow multiple file selection
-        filters: {
-          "Supported Documents": [
-            "pdf",
-            "md",
-            "markdown",
-            "html",
-            "htm",
-            "txt",
-          ],
-          PDF: ["pdf"],
-          Markdown: ["md", "markdown"],
-          HTML: ["html", "htm"],
-          Text: ["txt"],
-        },
-        openLabel: "Add Document(s)",
-      });
+      if (!selectionMode) {
+        return; // user cancelled
+      }
+
+      let fileUris: readonly vscode.Uri[] | undefined;
+
+      if (selectionMode.value === "files") {
+        // File selection mode: include filters so users can narrow to document types
+        fileUris = await vscode.window.showOpenDialog({
+          canSelectFiles: true,
+          canSelectFolders: false,
+          canSelectMany: true,
+          filters: {
+            "All Files": ["*"],
+            "Supported Documents": [
+              "pdf",
+              "md",
+              "markdown",
+              "html",
+              "htm",
+              "txt",
+            ],
+            PDF: ["pdf"],
+            Markdown: ["md", "markdown"],
+            HTML: ["html", "htm"],
+            Text: ["txt"],
+          },
+          openLabel: "Add Document(s)",
+        });
+      } else {
+        // Folder selection mode: filters are ignored for folders, so omit them
+        fileUris = await vscode.window.showOpenDialog({
+          canSelectFiles: false,
+          canSelectFolders: true,
+          canSelectMany: true,
+          openLabel: "Add Folder(s)",
+        });
+      }
 
       if (!fileUris || fileUris.length === 0) {
         return;
       }
 
       const filePaths = fileUris.map((uri) => uri.fsPath);
+      
+      // Check if any selected paths are directories
+      let hasDirectories = false;
+      for (const filePath of filePaths) {
+        try {
+          const stats = await fs.stat(filePath);
+          if (stats.isDirectory()) {
+            hasDirectories = true;
+            break;
+          }
+        } catch (error) {
+          // Ignore error, treat as file
+        }
+      }
+
+      // Ask user about recursive loading if folders are selected
+      let recursiveDirectory = false;
+      if (hasDirectories) {
+        const choice = await vscode.window.showQuickPick(
+          [
+            { label: "Load recursively", description: "Include all files from subfolders", value: true },
+            { label: "Load only from selected folders", description: "Don't scan subfolders", value: false },
+          ],
+          {
+            placeHolder: "One or more folders selected. How would you like to load them?",
+          }
+        );
+
+        if (!choice) {
+          return; // User cancelled
+        }
+
+        recursiveDirectory = choice.value;
+      }
+
       logger.info(
-        `Adding ${filePaths.length} document(s) to topic: ${selectedTopic.name}`
+        `Adding ${filePaths.length} document(s) to topic: ${selectedTopic.name}`,
+        { recursiveDirectory }
       );
 
       // Process documents using TopicManager
       await vscode.window.withProgress(
-        {
+          {
           location: vscode.ProgressLocation.Notification,
-          title: `Processing ${filePaths.length} document(s)...`,
+          title: `Processing documents...`,
           cancellable: false,
         },
         async (progress) => {
-          let currentFile = 0;
-
           const results = await this.topicManager.addDocuments(
             selectedTopic.id,
             filePaths,
             {
               onProgress: (pipelineProgress) => {
-                currentFile = Math.floor(
-                  (pipelineProgress.progress / 100) * filePaths.length
-                );
                 progress.report({
-                  message: `${pipelineProgress.message} (${currentFile + 1}/${
-                    filePaths.length
-                  })`,
-                  increment: pipelineProgress.progress / filePaths.length,
+                  message: pipelineProgress.message,
+                  increment: pipelineProgress.progress / 100,
                 });
+              },
+              loaderOptions: {
+                recursiveDirectory,
               },
             }
           );
@@ -420,16 +481,20 @@ export class CommandHandler {
             (sum, r) => sum + r.pipelineResult.metadata.chunksStored,
             0
           );
-          logger.info(
-            `Documents added: ${results.length} files, ${totalChunks} chunks`
+          const actualFileCount = results.reduce(
+            (sum, r) => sum + r.pipelineResult.metadata.originalDocuments,
+            0
           );
-          currentFile++;
+          logger.info(
+            `Documents added: ${actualFileCount} files, ${totalChunks} chunks`
+          );
         }
       );
 
       const stats = await this.topicManager.getTopicStats(selectedTopic.id);
+      const actualFileCount = stats?.documentCount || 0;
       vscode.window.showInformationMessage(
-        `${filePaths.length} document(s) added to "${selectedTopic.name}" successfully! Total: ${stats?.documentCount} documents, ${stats?.chunkCount} chunks.`
+        `Documents added to "${selectedTopic.name}" successfully! Total: ${actualFileCount} documents, ${stats?.chunkCount} chunks.`
       );
       this.treeDataProvider.refresh();
     } catch (error) {
