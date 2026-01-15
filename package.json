@@ -161,7 +161,14 @@
           "items": {
             "type": "string"
           },
-          "default": [".pdf", ".md", ".markdown", ".html", ".htm", ".txt"],
+          "default": [
+            ".pdf",
+            ".md",
+            ".markdown",
+            ".html",
+            ".htm",
+            ".txt"
+          ],
           "markdownDescription": "**File extensions to include** when scanning directories for documents. Only files with these extensions will be processed. Leave empty to include all supported extensions.",
           "order": 18
         },
@@ -372,14 +379,14 @@
     "test": "node ./out/test/test/runTest.js",
     "inspect:chunks": "npm run compile && node scripts/inspect-chunks.js",
     "clean": "rimraf out && rimraf node_modules",
-    "clean:test": "rimraf out/test"
+    "clean:test": "rimraf out/test",
+    "t": "npm run compile && npm run package:darwin-arm64 && code --install-extension localrag-darwin-arm64-*.vsix"
   },
   "devDependencies": {
-    "glob": "^10.4.5",
-    "@types/glob": "^7.2.0",
     "@eslint/js": "^9.39.1",
     "@types/chai": "^5.2.3",
     "@types/cheerio": "^0.22.35",
+    "@types/glob": "^7.2.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "^22.10.5",
     "@types/pdf-parse": "^1.1.5",
@@ -391,6 +398,7 @@
     "@vscode/vsce": "^3.6.2",
     "chai": "^5.1.2",
     "eslint": "^9.39.1",
+    "glob": "^10.4.5",
     "mocha": "^11.0.1",
     "rimraf": "^6.0.1",
     "typescript": "^5.9.3",
@@ -407,6 +415,7 @@
     "ignore": "^5.3.2",
     "langchain": "^1.0.0",
     "pdf-parse": "^1.1.1",
+    "reflect-metadata": "^0.2.2",
     "zod": "^3.22.4"
   },
   "optionalDependencies": {

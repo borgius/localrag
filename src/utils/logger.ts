@@ -17,13 +17,35 @@ export class Logger {
   private context: string;
   private static outputChannel: vscode.OutputChannel | null = null;
   private static logLevel: LogLevel = LogLevel.INFO;
+  private static isInitialized: boolean = false;
+
+  /**
+   * Initialize the logger early in extension lifecycle
+   * This ensures output channel is available as soon as possible
+   */
+  public static initialize(): void {
+    if (!Logger.outputChannel) {
+      Logger.outputChannel = vscode.window.createOutputChannel('RAGnarōk');
+      Logger.outputChannel.appendLine('[STARTUP] RAGnarōk extension starting...');
+      Logger.outputChannel.appendLine(`[STARTUP] Timestamp: ${new Date().toISOString()}`);
+      Logger.isInitialized = true;
+    }
+  }
+
+  /**
+   * Initialize from configuration
+   * Should be called after workspace config is available
+   */
+  public static initializeFromConfig(): void {
+    Logger.initialize();
+    const configLevel = Logger.getConfiguredLogLevel();
+    Logger.setLogLevel(configLevel);
+    Logger.outputChannel?.appendLine(`[STARTUP] Log level set to: ${LogLevel[configLevel]}`);
+  }
 
   constructor(context: string) {
     this.context = context;
-
-    if (!Logger.outputChannel) {
-      Logger.outputChannel = vscode.window.createOutputChannel('RAGnarōk');
-    }
+    Logger.initialize();
   }
 
   /**
@@ -115,9 +137,37 @@ export class Logger {
   }
 
   /**
+   * Log action start (debug level)
+   */
+  public actionStart(action: string, details?: any): void {
+    this.debug(`➡️  Starting: ${action}`, details);
+  }
+
+  /**
+   * Log action completion (debug level)
+   */
+  public actionComplete(action: string, details?: any): void {
+    this.debug(`✅ Completed: ${action}`, details);
+  }
+
+  /**
+   * Log action failure (error level)
+   */
+  public actionFailed(action: string, error?: Error | unknown): void {
+    this.error(`❌ Failed: ${action}`, error);
+  }
+
+  /**
    * Show the output channel
    */
   public show(): void {
+    Logger.outputChannel?.show();
+  }
+
+  /**
+   * Show the output channel (static)
+   */
+  public static showChannel(): void {
     Logger.outputChannel?.show();
   }
 
