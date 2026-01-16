@@ -34,6 +34,12 @@
           "markdownDescription": "Absolute path to a folder containing a locally downloaded Transformers.js-compatible embedding model. Models in this folder appear in the tree view and can be selected directly.",
           "order": 2
         },
+        "localrag.embeddingDbPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "**Embedding DB path**: Leave empty to use the default storage location. If set to a relative path, it will be resolved from the workspace root (project path).",
+          "order": 2.5
+        },
         "localrag.topK": {
           "type": "number",
           "default": 5,

@@ -21,6 +21,7 @@ export const CONFIG = {
   ROOT: "localrag",
   // Basic configuration
   LOCAL_MODEL_PATH: "localModelPath",
+  EMBEDDING_DB_PATH: "embeddingDbPath",
   TOP_K: "topK",
   CHUNK_SIZE: "chunkSize",
   CHUNK_OVERLAP: "chunkOverlap",

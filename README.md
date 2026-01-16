@@ -236,6 +236,9 @@ The RAG tool will:
   // Optional absolute/tilde path to a local Transformers.js model directory
   "localrag.localModelPath": "",
 
+  // Embedding DB path (empty = default). Relative paths are resolved from the workspace root.
+  "localrag.embeddingDbPath": "",
+
   // Retrieval strategy
   "localrag.retrievalStrategy": "hybrid",
 

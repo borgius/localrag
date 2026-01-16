@@ -20,7 +20,7 @@ import { VectorStoreFactory } from "../stores/vectorStoreFactory";
 import { EmbeddingService } from "../embeddings/embeddingService";
 import { TransformersEmbeddings } from "../embeddings/langchainEmbeddings";
 import { Logger } from "../utils/logger";
-import { EXTENSION } from "../utils/constants";
+import { CONFIG, EXTENSION } from "../utils/constants";
 
 export interface CreateTopicOptions {
   name: string;
@@ -865,10 +865,33 @@ export class TopicManager {
    * Get the database directory path
    */
   private getDatabaseDir(): string {
-    return path.join(
-      this.context.globalStorageUri.fsPath,
-      EXTENSION.DATABASE_DIR
-    );
+    const config = vscode.workspace.getConfiguration(CONFIG.ROOT);
+    const configuredPath = (config.get<string>(CONFIG.EMBEDDING_DB_PATH, "") || "").trim();
+
+    if (!configuredPath) {
+      return path.join(
+        this.context.globalStorageUri.fsPath,
+        EXTENSION.DATABASE_DIR
+      );
+    }
+
+    if (path.isAbsolute(configuredPath)) {
+      return configuredPath;
+    }
+
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+    if (!workspaceFolder) {
+      this.logger.warn(
+        "Embedding DB path is relative but no workspace folder found. Falling back to default.",
+        { configuredPath }
+      );
+      return path.join(
+        this.context.globalStorageUri.fsPath,
+        EXTENSION.DATABASE_DIR
+      );
+    }
+
+    return path.join(workspaceFolder.uri.fsPath, configuredPath);
   }
 
   /**
