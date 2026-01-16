@@ -221,46 +221,64 @@ export class CommandHandler {
         return;
       }
 
-      // Perform reindexing with progress
-      await vscode.window.withProgress(
-        {
-          location: vscode.ProgressLocation.Notification,
-          title: `Reindexing "${topic.name}" with "${selectedModel.label}"...`,
-          cancellable: false,
-        },
-        async (progress) => {
-          // Step 1: Get all document file paths before deletion
-          progress.report({ message: "Collecting documents..." });
-          const documents = this.topicManager.getTopicDocuments(topic.id);
-          const filePaths = documents.map(doc => doc.filePath).filter(Boolean) as string[];
-          
-          if (filePaths.length === 0) {
-            vscode.window.showWarningMessage(
-              `No documents found in "${topic.name}" to reindex.`
-            );
-            return;
-          }
+      // Step 1: Get all document file paths before deletion
+      const documents = this.topicManager.getTopicDocuments(topic.id);
+      const filePaths = documents.map(doc => doc.filePath).filter(Boolean) as string[];
+      
+      if (filePaths.length === 0) {
+        vscode.window.showWarningMessage(
+          `No documents found in "${topic.name}" to reindex.`
+        );
+        return;
+      }
 
-          // Step 2: Delete the current vector store for this topic
-          progress.report({ message: "Removing old index..." });
-          await this.topicManager.deleteTopicVectorStore(topic.id);
-          
-          // Step 3: Set the new model and reinitialize
-          progress.report({ message: "Loading new model..." });
-          await this.embeddingService.initialize(selectedModel.model.name);
-          await this.topicManager.reinitializeWithNewModel();
-          
-          // Step 4: Re-add all documents with the new model
-          progress.report({ message: `Re-indexing ${filePaths.length} document(s)...` });
-          await this.topicManager.addDocuments(topic.id, filePaths);
-          
-          this.treeDataProvider.refresh();
-        }
-      );
-
+      // Show notification that reindexing started
       vscode.window.showInformationMessage(
-        `Successfully reindexed "${topic.name}" with "${selectedModel.label}" model.`
+        `Reindexing "${topic.name}" with "${selectedModel.label}" model...`
       );
+
+      // Step 2: Delete the current vector store for this topic
+      await this.topicManager.deleteTopicVectorStore(topic.id);
+      
+      // Step 3: Set the new model and reinitialize
+      await this.embeddingService.initialize(selectedModel.model.name);
+      await this.topicManager.reinitializeWithNewModel();
+      
+      // Step 4: Start progress tracking (will show in tree view)
+      this.progressTracker.startTracking(topic.id, topic.name, filePaths.length);
+      
+      // Step 5: Re-add all documents with the new model (progress will be tracked)
+      try {
+        for (let i = 0; i < filePaths.length; i++) {
+          const filePath = filePaths[i];
+          
+          // Wait if indexing is paused
+          await this.progressTracker.waitIfPaused(topic.id);
+          
+          // Update progress
+          this.progressTracker.updateProgress(topic.id, {
+            processedFiles: i,
+            currentFile: filePath,
+            stage: "loading",
+          });
+          
+          // Add document
+          await this.topicManager.addDocuments(topic.id, [filePath]);
+          
+          // Update progress
+          this.progressTracker.updateProgress(topic.id, {
+            processedFiles: i + 1,
+          });
+        }
+        
+        // Complete tracking
+        this.progressTracker.completeTracking(topic.id);
+      } catch (err) {
+        this.progressTracker.cancelTracking(topic.id);
+        throw err;
+      }
+      
+      this.treeDataProvider.refresh();
     } catch (err) {
       logger.error('Failed to reindex with model', err);
       vscode.window.showErrorMessage(`Failed to reindex: ${err}`);
