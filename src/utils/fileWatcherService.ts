@@ -21,6 +21,7 @@ export class FileWatcherService {
   private includeExtensions: string[] = [];
   private defaultTopicId: string | null = null;
   private progressTracker: ProgressTracker;
+  private watchOnChanges: boolean = false;
   
   // Debounce timer to batch multiple changes
   private updateTimer: NodeJS.Timeout | null = null;
@@ -42,6 +43,7 @@ export class FileWatcherService {
     const config = vscode.workspace.getConfiguration(CONFIG.ROOT);
     const configuredFolders = config.get<string[]>(CONFIG.WATCH_FOLDERS, []);
     const legacyFolder = config.get<string>(CONFIG.WATCH_FOLDER, "");
+    this.watchOnChanges = config.get<boolean>(CONFIG.WATCH_ON_CHANGES, false);
     this.isRecursive = true;
     this.includeExtensions = config.get<string[]>(
       "includeExtensions",
@@ -93,11 +95,32 @@ export class FileWatcherService {
     this.defaultTopicId = defaultTopic.id;
     this.logger.info("Default topic ready for folder watching", { topicId: this.defaultTopicId });
 
-    // Seed default topic with existing files in watch folders
-    await this.seedDefaultTopicFromExistingFiles();
+    // Only proceed if watching is enabled
+    if (!this.watchOnChanges) {
+      this.logger.info("File watching is disabled (watchOnChanges is false). Enable it to start indexing.");
+      return;
+    }
 
-    // Setup file watchers
-    await this.setupWatchers();
+    // Defer seeding to idle to not block extension activation
+    this.logger.info("Deferring folder seeding to idle...");
+    setTimeout(async () => {
+      try {
+        // Re-check if still enabled (user might have disabled in the meantime)
+        const config = vscode.workspace.getConfiguration(CONFIG.ROOT);
+        if (!config.get<boolean>(CONFIG.WATCH_ON_CHANGES, false)) {
+          this.logger.info("Watch disabled before seeding started, skipping");
+          return;
+        }
+        
+        // Seed default topic with existing files in watch folders
+        await this.seedDefaultTopicFromExistingFiles();
+
+        // Setup file watchers after seeding completes
+        await this.setupWatchers();
+      } catch (error) {
+        this.logger.error("Failed to seed watch folders", { error });
+      }
+    }, 2000); // Wait 2 seconds for extension to fully initialize
   }
 
   /**
@@ -121,9 +144,7 @@ export class FileWatcherService {
       recursive: this.isRecursive
     });
 
-    vscode.window.showInformationMessage(
-      `Watching ${folderLabel} (${this.isRecursive ? "recursive" : "non-recursive"})`
-    );
+    // Note: Removed notification message - status is shown in tree view instead
   }
 
   /**
@@ -183,7 +204,8 @@ export class FileWatcherService {
     const resolved = rawFolders
       .map((folder) => folder.trim())
       .filter((folder) => folder.length > 0)
-      .map((folder) => this.resolveFolderPath(folder));
+      .map((folder) => this.resolveFolderPath(folder))
+      .filter((folder) => folder.length > 0); // Filter out invalid paths
 
     const unique = Array.from(new Set(resolved));
     return unique;
@@ -191,18 +213,43 @@ export class FileWatcherService {
 
   /**
    * Resolve workspace-relative folder paths
+   * Only allows paths within workspace folders
    */
   private resolveFolderPath(folder: string): string {
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!workspaceFolders || workspaceFolders.length === 0) {
+      this.logger.warn("No workspace folders found, cannot resolve watch folder", { folder });
+      return "";
+    }
+
+    // If it's an absolute path, ensure it's within a workspace folder
     if (path.isAbsolute(folder)) {
-      return folder;
+      const isInWorkspace = workspaceFolders.some(wsFolder => 
+        folder.startsWith(wsFolder.uri.fsPath)
+      );
+      if (isInWorkspace) {
+        return folder;
+      } else {
+        this.logger.warn("Absolute path is outside workspace, ignoring", { folder });
+        return "";
+      }
     }
 
-    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    if (workspaceRoot) {
-      return path.resolve(workspaceRoot, folder);
+    // Resolve relative paths within the first workspace folder
+    const workspaceRoot = workspaceFolders[0].uri.fsPath;
+    const resolved = path.resolve(workspaceRoot, folder);
+    
+    // Verify the resolved path is still within workspace
+    const isInWorkspace = workspaceFolders.some(wsFolder => 
+      resolved.startsWith(wsFolder.uri.fsPath)
+    );
+    
+    if (!isInWorkspace) {
+      this.logger.warn("Resolved path is outside workspace, ignoring", { folder, resolved });
+      return "";
     }
-
-    return path.resolve(folder);
+    
+    return resolved;
   }
 
   /**
@@ -245,22 +292,20 @@ export class FileWatcherService {
       existingFiles.length
     );
 
-    await vscode.window.withProgress(
-      {
-        location: vscode.ProgressLocation.Notification,
-        title: `Seeding watched folders...`,
-        cancellable: false,
-      },
-      async (progress) => {
-        progress.report({ message: `Processing ${existingFiles.length} file(s)...` });
+    // Process files without showing notification - status shown in tree view
+    try {
+      const processFiles = async () => {
+        this.logger.info(`Processing ${existingFiles.length} file(s) from watched folders`);
 
         await this.topicManager.ensureInitialized();
 
         let processedCount = 0;
         for (const filePath of existingFiles) {
+          // Check for pause at each file
+          await this.progressTracker.waitIfPaused(this.defaultTopicId!);
+
           try {
             const fileName = path.basename(filePath);
-            progress.report({ message: `Removing old version of ${fileName}...` });
             this.progressTracker.updateProgress(this.defaultTopicId!, {
               stage: "removing",
               currentFile: fileName,
@@ -279,37 +324,57 @@ export class FileWatcherService {
           }
         }
 
-        progress.report({ message: `Adding ${existingFiles.length} file(s)...` });
+        this.logger.info(`Adding ${existingFiles.length} file(s) from watched folders`);
         processedCount = 0;
-        const results = await this.topicManager.addDocuments(
-          this.defaultTopicId!,
-          existingFiles,
-          {
-            onProgress: (pipelineProgress) => {
-              progress.report({ message: pipelineProgress.message });
+        let successCount = 0;
 
-              this.progressTracker.updateProgress(this.defaultTopicId!, {
-                stage: pipelineProgress.stage,
-                currentFile: pipelineProgress.details?.fileName || undefined,
-                processedFiles: processedCount,
-                percentage: Math.round((processedCount / existingFiles.length) * 100),
-              });
+        // Process files one at a time so we can pause between them
+        for (const filePath of existingFiles) {
+          // Check for pause at each file
+          await this.progressTracker.waitIfPaused(this.defaultTopicId!);
 
-              if (pipelineProgress.stage === "complete") {
-                processedCount++;
+          try {
+            const results = await this.topicManager.addDocuments(
+              this.defaultTopicId!,
+              [filePath],
+              {
+                onProgress: (pipelineProgress) => {
+                  this.progressTracker.updateProgress(this.defaultTopicId!, {
+                    stage: pipelineProgress.stage,
+                    currentFile: pipelineProgress.details?.fileName || path.basename(filePath),
+                    processedFiles: processedCount,
+                    percentage: Math.round((processedCount / existingFiles.length) * 100),
+                  });
+                },
               }
-            },
+            );
+
+            if (results.length > 0) {
+              successCount++;
+            }
+          } catch (error) {
+            this.logger.warn("Failed to add document during seeding", {
+              filePath,
+              error: error instanceof Error ? error.message : String(error),
+            });
           }
-        );
+
+          processedCount++;
+        }
 
         this.logger.info("Watch folder seed complete", {
           processed: existingFiles.length,
-          successful: results.length,
+          successful: successCount,
         });
 
         this.progressTracker.completeTracking(this.defaultTopicId!);
-      }
-    );
+      };
+      
+      await processFiles();
+    } catch (error) {
+      this.logger.error("Failed during seeding", { error });
+      this.progressTracker.cancelTracking(this.defaultTopicId!);
+    }
   }
 
   /**
@@ -428,9 +493,14 @@ export class FileWatcherService {
         {
           location: vscode.ProgressLocation.Notification,
           title: `Updating watched folder documents...`,
-          cancellable: false,
+          cancellable: true,
         },
-        async (progress) => {
+        async (progress, token) => {
+          // Handle cancellation via pause
+          token.onCancellationRequested(() => {
+            this.progressTracker.pause();
+          });
+
           progress.report({ message: `Processing ${existingFiles.length} file(s)...` });
 
           await this.topicManager.ensureInitialized();
@@ -439,6 +509,9 @@ export class FileWatcherService {
           // This ensures that modified files don't have duplicate chunks
           let processedCount = 0;
           for (const filePath of existingFiles) {
+            // Check for pause at each file
+            await this.progressTracker.waitIfPaused(this.defaultTopicId!);
+
             try {
               const fileName = path.basename(filePath);
               progress.report({ message: `Removing old version of ${fileName}...` });
@@ -464,30 +537,45 @@ export class FileWatcherService {
           // Add documents to default topic
           progress.report({ message: `Adding ${existingFiles.length} file(s)...` });
           processedCount = 0;
-          const results = await this.topicManager.addDocuments(
-            this.defaultTopicId!,
-            existingFiles,
-            {
-              onProgress: (pipelineProgress) => {
-                progress.report({ message: pipelineProgress.message });
-                
-                // Update progress tracker with pipeline details
-                this.progressTracker.updateProgress(this.defaultTopicId!, {
-                  stage: pipelineProgress.stage,
-                  currentFile: pipelineProgress.details?.fileName || undefined,
-                  processedFiles: processedCount,
-                  percentage: Math.round((processedCount / existingFiles.length) * 100),
-                });
-                
-                // Increment when a file completes
-                if (pipelineProgress.stage === "complete") {
-                  processedCount++;
-                }
-              },
-            }
-          );
+          let successCount = 0;
 
-          const successCount = results.length;
+          // Process files one at a time so we can pause between them
+          for (const filePath of existingFiles) {
+            // Check for pause at each file
+            await this.progressTracker.waitIfPaused(this.defaultTopicId!);
+
+            try {
+              const results = await this.topicManager.addDocuments(
+                this.defaultTopicId!,
+                [filePath],
+                {
+                  onProgress: (pipelineProgress) => {
+                    progress.report({ message: pipelineProgress.message });
+                
+                    // Update progress tracker with pipeline details
+                    this.progressTracker.updateProgress(this.defaultTopicId!, {
+                      stage: pipelineProgress.stage,
+                      currentFile: pipelineProgress.details?.fileName || path.basename(filePath),
+                      processedFiles: processedCount,
+                      percentage: Math.round((processedCount / existingFiles.length) * 100),
+                    });
+                  },
+                }
+              );
+
+              if (results.length > 0) {
+                successCount++;
+              }
+            } catch (error) {
+              this.logger.warn("Failed to add document", {
+                filePath,
+                error: error instanceof Error ? error.message : String(error),
+              });
+            }
+
+            processedCount++;
+          }
+
           this.logger.info("Watch folder update complete", {
             processed: existingFiles.length,
             successful: successCount,
@@ -496,11 +584,7 @@ export class FileWatcherService {
           // Complete progress tracking
           this.progressTracker.completeTracking(this.defaultTopicId!);
 
-          if (successCount > 0) {
-            vscode.window.showInformationMessage(
-              `Watched folder updated: ${successCount} document(s) processed`
-            );
-          }
+          // Note: Removed notification message - status is shown in tree view instead
         }
       );
     } catch (error) {
@@ -527,6 +611,7 @@ export class FileWatcherService {
     const config = vscode.workspace.getConfiguration(CONFIG.ROOT);
     const configuredFolders = config.get<string[]>(CONFIG.WATCH_FOLDERS, []);
     const legacyFolder = config.get<string>(CONFIG.WATCH_FOLDER, "");
+    const newWatchOnChanges = config.get<boolean>(CONFIG.WATCH_ON_CHANGES, false);
     let newExtensions = config.get<string[]>("includeExtensions", DEFAULTS.INCLUDE_EXTENSIONS);
     if (newExtensions.length === 0) {
       newExtensions = DEFAULTS.INCLUDE_EXTENSIONS;
@@ -538,7 +623,8 @@ export class FileWatcherService {
     // Check if configuration changed
     const configChanged =
       JSON.stringify(newWatchFolders) !== JSON.stringify(this.watchFolders) ||
-      JSON.stringify(newExtensions) !== JSON.stringify(this.includeExtensions);
+      JSON.stringify(newExtensions) !== JSON.stringify(this.includeExtensions) ||
+      newWatchOnChanges !== this.watchOnChanges;
 
     if (!configChanged) {
       this.logger.debug("Configuration unchanged, no restart needed");
@@ -549,10 +635,28 @@ export class FileWatcherService {
     this.watchFolders = newWatchFolders;
     this.isRecursive = true;
     this.includeExtensions = newExtensions;
+    this.watchOnChanges = newWatchOnChanges;
 
     // Restart watcher
     await this.dispose();
     await this.initialize();
+  }
+
+  /**
+   * Get current watch status
+   */
+  public isWatchingEnabled(): boolean {
+    return this.watchOnChanges && this.watchFolders.length > 0;
+  }
+
+  /**
+   * Toggle watch on/off
+   */
+  public async toggleWatch(): Promise<void> {
+    const config = vscode.workspace.getConfiguration(CONFIG.ROOT);
+    const newValue = !this.watchOnChanges;
+    await config.update(CONFIG.WATCH_ON_CHANGES, newValue, vscode.ConfigurationTarget.Workspace);
+    this.logger.info(`File watching ${newValue ? "enabled" : "disabled"}`);
   }
 
   /**

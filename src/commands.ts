@@ -11,6 +11,8 @@ import { TopicTreeDataProvider } from "./topicTreeView";
 import { COMMANDS } from "./utils/constants";
 import { Logger } from "./utils/logger";
 import { GitHubTokenManager } from "./utils/githubTokenManager";
+import { ProgressTracker } from "./utils/progressTracker";
+import { getFileWatcherService } from "./extension";
 
 const logger = new Logger("CommandHandler");
 
@@ -20,6 +22,7 @@ export class CommandHandler {
   private treeDataProvider: TopicTreeDataProvider;
   private context: vscode.ExtensionContext;
   private tokenManager: GitHubTokenManager;
+  private progressTracker: ProgressTracker;
 
   private constructor(
     context: vscode.ExtensionContext,
@@ -31,6 +34,7 @@ export class CommandHandler {
     this.embeddingService = EmbeddingService.getInstance();
     this.treeDataProvider = treeDataProvider;
     this.tokenManager = GitHubTokenManager.getInstance();
+    this.progressTracker = ProgressTracker.getInstance();
   }
 
   /**
@@ -77,6 +81,14 @@ export class CommandHandler {
       ),
       vscode.commands.registerCommand(COMMANDS.REMOVE_GITHUB_TOKEN, () =>
         handler.removeGithubToken()
+      ),
+      // Indexing control commands
+      vscode.commands.registerCommand(COMMANDS.TOGGLE_INDEXING_PAUSE, () =>
+        handler.toggleIndexingPause()
+      ),
+      // Watch control commands
+      vscode.commands.registerCommand(COMMANDS.TOGGLE_WATCH, () =>
+        handler.toggleWatch()
       )
     );
   }
@@ -98,6 +110,33 @@ export class CommandHandler {
       logger.error('Failed to set embedding model', err);
       vscode.window.showErrorMessage(`Failed to set embedding model: ${err}`);
     }
+  }
+
+  /**
+   * Toggle indexing pause/resume state
+   */
+  public toggleIndexingPause(): void {
+    this.progressTracker.togglePause();
+    const status = this.progressTracker.isPaused ? "paused" : "resumed";
+    logger.info(`Indexing ${status}`);
+    vscode.window.showInformationMessage(`Indexing ${status}`);
+    this.treeDataProvider.refresh();
+  }
+
+  /**
+   * Toggle watch on/off
+   */
+  public async toggleWatch(): Promise<void> {
+    const fileWatcher = getFileWatcherService();
+    if (!fileWatcher) {
+      vscode.window.showWarningMessage("File watcher service is not initialized");
+      return;
+    }
+
+    await fileWatcher.toggleWatch();
+    const status = fileWatcher.isWatchingEnabled() ? "enabled" : "paused";
+    vscode.window.showInformationMessage(`Folder watching ${status}`);
+    this.treeDataProvider.refresh();
   }
 
   /**

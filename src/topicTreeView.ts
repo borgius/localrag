@@ -5,7 +5,7 @@
 
 import * as vscode from "vscode";
 import { TopicManager } from "./managers/topicManager";
-import { Topic, Document, RetrievalStrategy } from "./utils/types";
+import { Topic, Document, RetrievalStrategy, FolderChunkNode } from "./utils/types";
 import { Logger } from "./utils/logger";
 import { CONFIG, COMMANDS } from "./utils/constants";
 import { EmbeddingService, type AvailableModel } from "./embeddings/embeddingService";
@@ -102,13 +102,13 @@ export class TopicTreeDataProvider
         // Check for active indexing progress
         const progress = this.progressTracker.getProgress(element.topic.id);
         if (progress) {
-          items.push(new TopicTreeItem(progress, "progress"));
+          items.push(new TopicTreeItem(progress, "progress", element.topic.id));
         }
 
-        // Add stats item
+        // Add stats item with topicId for folder hierarchy
         const stats = await topicManager.getTopicStats(element.topic.id);
         if (stats) {
-          items.push(new TopicTreeItem(stats, "topic-stats"));
+          items.push(new TopicTreeItem(stats, "topic-stats", element.topic.id));
         }
 
         // Add documents
@@ -121,8 +121,38 @@ export class TopicTreeDataProvider
 
         return items;
       } else if (element.type === "topic-stats" && element.data) {
-        // Show detailed statistics
-        return this.getStatisticsItems(element.data);
+        // Show detailed statistics with folder hierarchy
+        return this.getStatisticsItems(element.data, element.topicId);
+      } else if (element.type === "folder-stats-root" && element.data) {
+        // Show root level folders for a topic
+        const topicManager = await this.topicManager;
+        const folderStats = topicManager.getFolderChunkStats(element.topicId!);
+        if (!folderStats || folderStats.roots.size === 0) {
+          return [];
+        }
+        const items: TopicTreeItem[] = [];
+        for (const root of folderStats.roots.values()) {
+          items.push(new TopicTreeItem(root, "folder-node", element.topicId));
+        }
+        return items;
+      } else if (element.type === "folder-node" && element.data) {
+        // Show children of a folder node
+        const node = element.data as FolderChunkNode;
+        if (node.children.size === 0) {
+          return [];
+        }
+        const items: TopicTreeItem[] = [];
+        // Sort: folders first, then files, both alphabetically
+        const children = Array.from(node.children.values()).sort((a, b) => {
+          if (a.isFile === b.isFile) {
+            return a.name.localeCompare(b.name);
+          }
+          return a.isFile ? 1 : -1;
+        });
+        for (const child of children) {
+          items.push(new TopicTreeItem(child, "folder-node", element.topicId));
+        }
+        return items;
       }
       return [];
     } catch (error) {
@@ -137,6 +167,22 @@ export class TopicTreeDataProvider
   private async getConfigurationItems(): Promise<TopicTreeItem[]> {
     const config = vscode.workspace.getConfiguration(CONFIG.ROOT);
     const items: TopicTreeItem[] = [];
+
+    // Watch folders status - show at the top
+    const watchFolders = config.get<string[]>(CONFIG.WATCH_FOLDERS, []);
+    const watchOnChanges = config.get<boolean>(CONFIG.WATCH_ON_CHANGES, false);
+    if (watchFolders.length > 0) {
+      items.push(
+        new TopicTreeItem(
+          { 
+            key: "watch-status", 
+            value: watchOnChanges,
+            folderCount: watchFolders.length 
+          },
+          "config-item"
+        )
+      );
+    }
 
     // Embedding model (actual model currently loaded)
     const currentModel = this.embeddingService.getCurrentModel();
@@ -171,6 +217,14 @@ export class TopicTreeDataProvider
     items.push(
       new TopicTreeItem(
         { key: "agentic-mode", value: useAgenticMode },
+        "config-item"
+      )
+    );
+
+    // Indexing pause status
+    items.push(
+      new TopicTreeItem(
+        { key: "indexing-paused", value: this.progressTracker.isPaused },
         "config-item"
       )
     );
@@ -213,7 +267,7 @@ export class TopicTreeDataProvider
   /**
    * Get detailed statistics items for a topic
    */
-  private getStatisticsItems(stats: any): TopicTreeItem[] {
+  private async getStatisticsItems(stats: any, topicId?: string): Promise<TopicTreeItem[]> {
     const items: TopicTreeItem[] = [];
 
     // Document count
@@ -249,13 +303,30 @@ export class TopicTreeDataProvider
       )
     );
 
+    // Add folder hierarchy if available
+    if (topicId) {
+      const topicManager = await this.topicManager;
+      const folderStats = topicManager.getFolderChunkStats(topicId);
+      if (folderStats && folderStats.roots.size > 0) {
+        items.push(
+          new TopicTreeItem(
+            { key: "folder-breakdown", totalChunks: folderStats.totalChunks },
+            "folder-stats-root",
+            topicId
+          )
+        );
+      }
+    }
+
     return items;
   }
 }
 
 export class TopicTreeItem extends vscode.TreeItem {
+  public readonly topicId?: string;
+  
   constructor(
-    public readonly data: Topic | Document | IndexingProgress | any,
+    public readonly data: Topic | Document | IndexingProgress | FolderChunkNode | any,
     public readonly type:
       | "topic"
       | "document"
@@ -265,12 +336,16 @@ export class TopicTreeItem extends vscode.TreeItem {
       | "topic-stats"
       | "stat-item"
       | "progress"
+      | "folder-stats-root"
+      | "folder-node",
+    topicId?: string
   ) {
     super(
       TopicTreeItem.getLabel(data, type),
-      TopicTreeItem.getCollapsibleState(type)
+      TopicTreeItem.getCollapsibleState(type, data)
     );
 
+    this.topicId = topicId;
     this.setupTreeItem(data, type);
   }
 
@@ -292,20 +367,34 @@ export class TopicTreeItem extends vscode.TreeItem {
         return TopicTreeItem.formatStatLabel(data);
       case "progress":
         return TopicTreeItem.formatProgressLabel(data);
+      case "folder-stats-root":
+        return `📁 Folder Breakdown (${data.totalChunks} chunks)`;
+      case "folder-node":
+        const node = data as FolderChunkNode;
+        const icon = node.isFile ? "📄" : "📁";
+        return `${icon} ${node.name} (${node.chunkCount} chunks)`;
       default:
         return "Unknown";
     }
   }
 
   private static getCollapsibleState(
-    type: string
+    type: string,
+    data?: any
   ): vscode.TreeItemCollapsibleState {
     switch (type) {
       case "topic":
       case "config-status":
       case "local-models":
       case "topic-stats":
+      case "folder-stats-root":
         return vscode.TreeItemCollapsibleState.Collapsed;
+      case "folder-node":
+        const node = data as FolderChunkNode;
+        if (node && !node.isFile && node.children.size > 0) {
+          return vscode.TreeItemCollapsibleState.Collapsed;
+        }
+        return vscode.TreeItemCollapsibleState.None;
       default:
         return vscode.TreeItemCollapsibleState.None;
     }
@@ -318,6 +407,8 @@ export class TopicTreeItem extends vscode.TreeItem {
         return `Agentic Mode: ${value ? "✅ Enabled" : "❌ Disabled"}`;
       case "use-llm":
         return `LLM Planning: ${value ? "✅ Enabled" : "❌ Disabled"}`;
+      case "indexing-paused":
+        return `Indexing: ${value ? "⏸️ Paused" : "▶️ Active"}`;
       case "retrieval-strategy":
         return `Strategy: ${
           value === RetrievalStrategy.HYBRID
@@ -419,6 +510,30 @@ export class TopicTreeItem extends vscode.TreeItem {
             ? `Click to download and load ${sourceLabel} model: ${data.display ?? data.value}`
             : `Click to load ${sourceLabel} model: ${data.display ?? data.value}`;
         }
+
+        // Make indexing pause status clickable to toggle
+        if (data && data.key === 'indexing-paused') {
+          this.command = {
+            command: COMMANDS.TOGGLE_INDEXING_PAUSE,
+            title: 'Toggle Indexing Pause',
+          };
+          this.tooltip = data.value
+            ? "Click to resume indexing"
+            : "Click to pause indexing";
+          this.iconPath = new vscode.ThemeIcon(data.value ? "debug-pause" : "debug-start");
+        }
+
+        // Make watch status clickable to toggle
+        if (data && data.key === 'watch-status') {
+          this.command = {
+            command: COMMANDS.TOGGLE_WATCH,
+            title: 'Toggle Watch',
+          };
+          this.tooltip = data.value
+            ? `Click to pause watching ${data.folderCount} folder(s)`
+            : `Click to resume watching ${data.folderCount} folder(s)`;
+          this.iconPath = new vscode.ThemeIcon(data.value ? "eye" : "eye-closed");
+        }
         break;
 
       case "topic-stats":
@@ -439,6 +554,23 @@ export class TopicTreeItem extends vscode.TreeItem {
         this.description = progress.stage;
         this.contextValue = "progress";
         this.iconPath = new vscode.ThemeIcon("loading~spin");
+        this.command = {
+          command: COMMANDS.TOGGLE_INDEXING_PAUSE,
+          title: "Toggle Indexing Pause",
+        };
+        break;
+
+      case "folder-stats-root":
+        this.tooltip = "Click to expand folder breakdown by chunks";
+        this.contextValue = "folder-stats-root";
+        this.iconPath = new vscode.ThemeIcon("folder-library");
+        break;
+
+      case "folder-node":
+        const folderNode = data as FolderChunkNode;
+        this.tooltip = folderNode.path;
+        this.contextValue = folderNode.isFile ? "folder-file" : "folder-folder";
+        this.iconPath = new vscode.ThemeIcon(folderNode.isFile ? "file" : "folder");
         break;
     }
   }

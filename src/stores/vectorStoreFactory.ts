@@ -21,6 +21,7 @@ import { VectorStore } from "@langchain/core/vectorstores";
 import { Embeddings } from "@langchain/core/embeddings";
 import { Document as LangChainDocument } from "@langchain/core/documents";
 import { Logger } from "../utils/logger";
+import { ProgressTracker } from "../utils/progressTracker";
 
 export interface VectorStoreConfig {
   topicId: string;
@@ -43,6 +44,7 @@ export class VectorStoreFactory {
   private storeCache: Map<string, VectorStore> = new Map();
   private embeddingModel: string;
   private lanceDbUri: string;
+  private progressTracker: ProgressTracker;
 
   constructor(embeddings: Embeddings, storageDir: string, embeddingModel: string) {
     this.logger = new Logger("VectorStoreFactory");
@@ -55,6 +57,7 @@ export class VectorStoreFactory {
     this.storageDir = storageDir;
     this.embeddingModel = embeddingModel;
     this.lanceDbUri = path.join(storageDir, "lancedb");
+    this.progressTracker = ProgressTracker.getInstance();
     this.logger.info("VectorStoreFactory initialized", { storageDir, embeddingModel, lanceDbUri: this.lanceDbUri });
   }
 
@@ -264,6 +267,7 @@ export class VectorStoreFactory {
 
       const BATCH_SIZE = 500;
       for (let i = 0; i < normalizedDocuments.length; i += BATCH_SIZE) {
+        await this.progressTracker.waitIfPaused(topicId);
         const batch = normalizedDocuments.slice(i, Math.min(i + BATCH_SIZE, normalizedDocuments.length));
         const progressPercent = Math.round(((i + batch.length) / normalizedDocuments.length) * 100);
         this.logger.info(`Adding document batch to vector store`, { topicId, batchStart: i, batchEnd: i + batch.length, totalDocuments: normalizedDocuments.length, progress: `${progressPercent}%` });

@@ -17,6 +17,7 @@ import { EmbeddingService } from "../embeddings/embeddingService";
 import { TransformersEmbeddings } from "../embeddings/langchainEmbeddings";
 import { VectorStoreFactory } from "../stores/vectorStoreFactory";
 import { Logger } from "../utils/logger";
+import { ProgressTracker } from "../utils/progressTracker";
 
 export interface PipelineOptions {
   /** Document loading options */
@@ -82,12 +83,14 @@ export class DocumentPipeline {
   private semanticChunker: SemanticChunker;
   private embeddingService: EmbeddingService;
   private vectorStoreFactory: VectorStoreFactory | null = null;
+  private progressTracker: ProgressTracker;
 
   constructor() {
     this.logger = new Logger("DocumentPipeline");
     this.documentLoader = new DocumentLoaderFactory();
     this.semanticChunker = new SemanticChunker();
     this.embeddingService = EmbeddingService.getInstance();
+    this.progressTracker = ProgressTracker.getInstance();
 
     this.logger.info("DocumentPipeline initialized");
   }
@@ -221,6 +224,9 @@ export class DocumentPipeline {
         message: `Loaded ${loadedDocs.length} file(s)`,
       });
 
+      // Pause checkpoint after loading
+      await this.progressTracker.waitIfPaused(topicId);
+
       // Stop if no documents were loaded - this is a critical failure
       if (loadedDocs.length === 0) {
         const errorMessage = "No documents loaded - document loading failed. Check file paths, loader configuration, or API rate limits.";
@@ -243,6 +249,9 @@ export class DocumentPipeline {
         progress: 25,
         message: `Chunking ${loadedDocs.length} document(s)...`,
       });
+
+      // Pause checkpoint before chunking
+      await this.progressTracker.waitIfPaused(topicId);
 
       const chunkingResult = await this.semanticChunker.chunkDocuments(
         loadedDocs,
@@ -286,6 +295,9 @@ export class DocumentPipeline {
         message: `Generating embeddings for ${result.chunks.length} chunk(s)...`,
       });
 
+      // Pause checkpoint before storing (embedding happens during storage)
+      await this.progressTracker.waitIfPaused(topicId);
+
       // Stage 4: Store in vector database
       const storeStartTime = Date.now();
       this.reportProgress(options.onProgress, {
@@ -293,6 +305,9 @@ export class DocumentPipeline {
         progress: 70,
         message: `Storing ${result.chunks.length} chunk(s) in vector database...`,
       });
+
+      // Pause checkpoint before store
+      await this.progressTracker.waitIfPaused(topicId);
 
       await this.storeDocuments(result.chunks, topicId, options);
       result.metadata.chunksStored = result.chunks.length;

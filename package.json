@@ -219,6 +219,12 @@
           ],
           "markdownDescription": "**Folders to watch for changes**: List of folder paths (absolute or workspace-relative) that will be monitored. When files are added, modified, or deleted in these folders, the default topic is automatically updated. Leave empty to disable folder watching.",
           "order": 19
+        },
+        "localrag.watchOnChanges": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "**Enable automatic watching**: When enabled, the extension will automatically watch configured folders for changes and update the default topic. You can toggle this setting using the pause/resume button in the topic tree view.",
+          "order": 20
         }
       }
     },
@@ -279,6 +285,18 @@
         "title": "Remove GitHub Token",
         "category": "LocalRAG",
         "icon": "$(trash)"
+      },
+      {
+        "command": "localrag.toggleIndexingPause",
+        "title": "Pause/Resume Indexing",
+        "category": "LocalRAG",
+        "icon": "$(debug-pause)"
+      },
+      {
+        "command": "localrag.toggleWatch",
+        "title": "Toggle Folder Watching",
+        "category": "LocalRAG",
+        "icon": "$(eye)"
       }
     ],
     "viewsContainers": {
@@ -316,6 +334,11 @@
           "command": "localrag.refreshTopics",
           "when": "view == ragTopics",
           "group": "navigation@2"
+        },
+        {
+          "command": "localrag.toggleIndexingPause",
+          "when": "view == ragTopics",
+          "group": "navigation@3"
         }
       ],
       "view/item/context": [
@@ -330,9 +353,14 @@
           "group": "inline@2"
         },
         {
-          "command": "localrag.deleteTopic",
+          "command": "localrag.toggleIndexingPause",
           "when": "view == ragTopics && viewItem == topic",
           "group": "inline@3"
+        },
+        {
+          "command": "localrag.deleteTopic",
+          "when": "view == ragTopics && viewItem == topic",
+          "group": "inline@4"
         }
       ]
     },

@@ -38,6 +38,7 @@ export const CONFIG = {
   // Folder watching configuration
   WATCH_FOLDER: "watchFolder",
   WATCH_FOLDERS: "watchFolders",
+  WATCH_ON_CHANGES: "watchOnChanges",
 } as const;
 
 /**
@@ -61,6 +62,8 @@ export const COMMANDS = {
   CLEAR_MODEL_CACHE: "localrag.clearModelCache",
   CLEAR_DATABASE: "localrag.clearDatabase",
   SET_EMBEDDING_MODEL: "localrag.setEmbeddingModel",
+  TOGGLE_INDEXING_PAUSE: "localrag.toggleIndexingPause",
+  TOGGLE_WATCH: "localrag.toggleWatch",
   // GitHub token management
   ADD_GITHUB_TOKEN: "localrag.addGithubToken",
   LIST_GITHUB_TOKENS: "localrag.listGithubTokens",

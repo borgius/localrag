@@ -12,6 +12,45 @@ export enum RetrievalStrategy {
   BM25 = 'bm25',
 }
 
+/**
+ * Hierarchical folder node for statistics tree
+ */
+export interface FolderChunkNode {
+  /** Folder or file name */
+  name: string;
+  /** Full path */
+  path: string;
+  /** Whether this is a file (leaf) or folder */
+  isFile: boolean;
+  /** Total chunks in this item (for files) or sum of all children (for folders) */
+  chunkCount: number;
+  /** Child folders and files */
+  children: Map<string, FolderChunkNode>;
+}
+
+/**
+ * Serializable version of FolderChunkNode for storage
+ */
+export interface FolderChunkNodeSerialized {
+  name: string;
+  path: string;
+  isFile: boolean;
+  chunkCount: number;
+  children: { [key: string]: FolderChunkNodeSerialized };
+}
+
+/**
+ * Root structure for folder chunk statistics
+ */
+export interface FolderChunkStats {
+  /** Root folders being watched */
+  roots: Map<string, FolderChunkNode>;
+  /** Total chunks across all folders */
+  totalChunks: number;
+  /** Last updated timestamp */
+  lastUpdated: number;
+}
+
 export interface Topic {
   id: string;
   name: string;

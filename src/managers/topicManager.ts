@@ -10,7 +10,7 @@ import * as vscode from "vscode";
 import * as fs from "fs/promises";
 import * as path from "path";
 import { VectorStore } from "@langchain/core/vectorstores";
-import { Topic, TopicsIndex, Document as TopicDocument } from "../utils/types";
+import { Topic, TopicsIndex, Document as TopicDocument, FolderChunkNode, FolderChunkStats, FolderChunkNodeSerialized } from "../utils/types";
 import {
   DocumentPipeline,
   PipelineOptions,
@@ -65,6 +65,9 @@ export class TopicManager {
 
   // Cache for topic documents
   private topicDocuments: Map<string, Map<string, TopicDocument>> = new Map();
+
+  // Cache for folder chunk statistics per topic
+  private folderChunkStats: Map<string, FolderChunkStats> = new Map();
 
   private constructor(context: vscode.ExtensionContext) {
     this.context = context;
@@ -498,6 +501,9 @@ export class TopicManager {
       // Persist document metadata to disk
       await this.saveTopicDocuments(topicId);
 
+      // Update folder chunk statistics
+      this.removeFolderChunkStats(topicId, filePath);
+
       this.logger.info("Document removed successfully", {
         topicId,
         documentId: documentToRemove.id,
@@ -577,6 +583,9 @@ export class TopicManager {
             this.topicDocuments.set(topicId, new Map());
           }
           this.topicDocuments.get(topicId)!.set(document.id, document);
+
+          // Update folder chunk statistics
+          this.updateFolderChunkStats(topicId, filePath, document.chunkCount);
 
           results.push({
             topic,
@@ -750,6 +759,286 @@ export class TopicManager {
       });
       return null;
     }
+  }
+
+  /**
+   * Get folder chunk statistics for a topic (hierarchical tree structure)
+   */
+  public getFolderChunkStats(topicId: string): FolderChunkStats | null {
+    return this.folderChunkStats.get(topicId) || null;
+  }
+
+  /**
+   * Update folder chunk statistics when a document is added
+   */
+  public updateFolderChunkStats(topicId: string, filePath: string, chunkCount: number): void {
+    let stats = this.folderChunkStats.get(topicId);
+    if (!stats) {
+      stats = {
+        roots: new Map(),
+        totalChunks: 0,
+        lastUpdated: Date.now(),
+      };
+      this.folderChunkStats.set(topicId, stats);
+    }
+
+    // Parse the file path and build/update the hierarchy
+    const normalizedPath = path.normalize(filePath);
+    const parts = normalizedPath.split(path.sep).filter(p => p.length > 0);
+    
+    if (parts.length === 0) {
+      return;
+    }
+
+    // Determine root (first significant part of path)
+    const rootPath = path.isAbsolute(filePath) ? path.sep + parts[0] : parts[0];
+    
+    if (!stats.roots.has(rootPath)) {
+      stats.roots.set(rootPath, {
+        name: parts[0],
+        path: rootPath,
+        isFile: parts.length === 1,
+        chunkCount: 0,
+        children: new Map(),
+      });
+    }
+
+    // Traverse/build the tree
+    let currentNode = stats.roots.get(rootPath)!;
+    let currentPath = rootPath;
+
+    for (let i = 1; i < parts.length; i++) {
+      const part = parts[i];
+      currentPath = path.join(currentPath, part);
+      const isLastPart = i === parts.length - 1;
+
+      if (!currentNode.children.has(part)) {
+        currentNode.children.set(part, {
+          name: part,
+          path: currentPath,
+          isFile: isLastPart,
+          chunkCount: 0,
+          children: new Map(),
+        });
+      }
+
+      currentNode = currentNode.children.get(part)!;
+      
+      if (isLastPart) {
+        currentNode.isFile = true;
+        currentNode.chunkCount = chunkCount;
+      }
+    }
+
+    // Recalculate all folder totals
+    this.recalculateFolderTotals(stats);
+    stats.lastUpdated = Date.now();
+
+    // Persist to disk
+    this.saveFolderChunkStats(topicId).catch(err => {
+      this.logger.warn("Failed to save folder chunk stats", { topicId, error: err });
+    });
+  }
+
+  /**
+   * Remove a file from folder chunk statistics
+   */
+  public removeFolderChunkStats(topicId: string, filePath: string): void {
+    const stats = this.folderChunkStats.get(topicId);
+    if (!stats) {
+      return;
+    }
+
+    const normalizedPath = path.normalize(filePath);
+    const parts = normalizedPath.split(path.sep).filter(p => p.length > 0);
+    
+    if (parts.length === 0) {
+      return;
+    }
+
+    const rootPath = path.isAbsolute(filePath) ? path.sep + parts[0] : parts[0];
+    const root = stats.roots.get(rootPath);
+    if (!root) {
+      return;
+    }
+
+    // Navigate to parent of the file
+    let currentNode = root;
+    const pathStack: { parent: FolderChunkNode; childKey: string }[] = [];
+
+    for (let i = 1; i < parts.length; i++) {
+      const part = parts[i];
+      const child = currentNode.children.get(part);
+      if (!child) {
+        return; // File not found in stats
+      }
+
+      pathStack.push({ parent: currentNode, childKey: part });
+      currentNode = child;
+    }
+
+    // Remove the file node
+    if (pathStack.length > 0) {
+      const lastEntry = pathStack[pathStack.length - 1];
+      lastEntry.parent.children.delete(lastEntry.childKey);
+
+      // Clean up empty parent folders
+      for (let i = pathStack.length - 2; i >= 0; i--) {
+        const entry = pathStack[i];
+        const child = entry.parent.children.get(entry.childKey);
+        if (child && child.children.size === 0 && !child.isFile) {
+          entry.parent.children.delete(entry.childKey);
+        } else {
+          break;
+        }
+      }
+    } else {
+      // The file is directly under root
+      stats.roots.delete(rootPath);
+    }
+
+    // Remove empty roots
+    if (root.children.size === 0 && !root.isFile) {
+      stats.roots.delete(rootPath);
+    }
+
+    // Recalculate totals
+    this.recalculateFolderTotals(stats);
+    stats.lastUpdated = Date.now();
+
+    // Persist to disk
+    this.saveFolderChunkStats(topicId).catch(err => {
+      this.logger.warn("Failed to save folder chunk stats after removal", { topicId, error: err });
+    });
+  }
+
+  /**
+   * Recalculate chunk totals for all folders in the stats tree
+   */
+  private recalculateFolderTotals(stats: FolderChunkStats): void {
+    const calculateNodeTotal = (node: FolderChunkNode): number => {
+      if (node.isFile) {
+        return node.chunkCount;
+      }
+      let total = 0;
+      for (const child of node.children.values()) {
+        total += calculateNodeTotal(child);
+      }
+      node.chunkCount = total;
+      return total;
+    };
+
+    let totalChunks = 0;
+    for (const root of stats.roots.values()) {
+      totalChunks += calculateNodeTotal(root);
+    }
+    stats.totalChunks = totalChunks;
+  }
+
+  /**
+   * Save folder chunk statistics to disk
+   */
+  private async saveFolderChunkStats(topicId: string): Promise<void> {
+    const stats = this.folderChunkStats.get(topicId);
+    if (!stats) {
+      return;
+    }
+
+    try {
+      const statsPath = this.getFolderChunkStatsPath(topicId);
+      const serialized = this.serializeFolderChunkStats(stats);
+      await fs.writeFile(statsPath, JSON.stringify(serialized, null, 2), "utf-8");
+      this.logger.debug("Folder chunk stats saved", { topicId });
+    } catch (error) {
+      this.logger.error("Failed to save folder chunk stats", {
+        error: error instanceof Error ? error.message : String(error),
+        topicId,
+      });
+    }
+  }
+
+  /**
+   * Load folder chunk statistics from disk
+   */
+  private async loadFolderChunkStats(topicId: string): Promise<void> {
+    try {
+      const statsPath = this.getFolderChunkStatsPath(topicId);
+      const data = await fs.readFile(statsPath, "utf-8");
+      const serialized = JSON.parse(data);
+      const stats = this.deserializeFolderChunkStats(serialized);
+      this.folderChunkStats.set(topicId, stats);
+      this.logger.debug("Folder chunk stats loaded", { topicId });
+    } catch {
+      // File might not exist for older topics
+      this.logger.debug("No folder chunk stats found for topic", { topicId });
+    }
+  }
+
+  /**
+   * Get path for folder chunk stats file
+   */
+  private getFolderChunkStatsPath(topicId: string): string {
+    return path.join(this.getDatabaseDir(), `topic-${topicId}-folder-stats.json`);
+  }
+
+  /**
+   * Serialize FolderChunkStats for JSON storage
+   */
+  private serializeFolderChunkStats(stats: FolderChunkStats): any {
+    const serializeNode = (node: FolderChunkNode): FolderChunkNodeSerialized => {
+      const children: { [key: string]: FolderChunkNodeSerialized } = {};
+      for (const [key, child] of node.children) {
+        children[key] = serializeNode(child);
+      }
+      return {
+        name: node.name,
+        path: node.path,
+        isFile: node.isFile,
+        chunkCount: node.chunkCount,
+        children,
+      };
+    };
+
+    const roots: { [key: string]: FolderChunkNodeSerialized } = {};
+    for (const [key, root] of stats.roots) {
+      roots[key] = serializeNode(root);
+    }
+
+    return {
+      roots,
+      totalChunks: stats.totalChunks,
+      lastUpdated: stats.lastUpdated,
+    };
+  }
+
+  /**
+   * Deserialize FolderChunkStats from JSON storage
+   */
+  private deserializeFolderChunkStats(data: any): FolderChunkStats {
+    const deserializeNode = (serialized: FolderChunkNodeSerialized): FolderChunkNode => {
+      const children = new Map<string, FolderChunkNode>();
+      for (const [key, child] of Object.entries(serialized.children)) {
+        children.set(key, deserializeNode(child as FolderChunkNodeSerialized));
+      }
+      return {
+        name: serialized.name,
+        path: serialized.path,
+        isFile: serialized.isFile,
+        chunkCount: serialized.chunkCount,
+        children,
+      };
+    };
+
+    const roots = new Map<string, FolderChunkNode>();
+    for (const [key, root] of Object.entries(data.roots)) {
+      roots.set(key, deserializeNode(root as FolderChunkNodeSerialized));
+    }
+
+    return {
+      roots,
+      totalChunks: data.totalChunks || 0,
+      lastUpdated: data.lastUpdated || Date.now(),
+    };
   }
 
   /**
@@ -1080,6 +1369,7 @@ export class TopicManager {
 
     for (const topicId of topicIds) {
       await this.loadTopicDocuments(topicId);
+      await this.loadFolderChunkStats(topicId);
     }
   }
 }

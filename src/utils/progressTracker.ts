@@ -26,6 +26,8 @@ export class ProgressTracker {
   private logger: Logger;
   private activeOperations: Map<string, IndexingProgress> = new Map();
   private emitter: EventEmitter;
+  private _isPaused: boolean = false; // Actual pause state managed by togglePause
+  private pauseResolvers: Map<string, (() => void)[]> = new Map();
 
   private constructor() {
     this.logger = new Logger("ProgressTracker");
@@ -174,5 +176,85 @@ export class ProgressTracker {
   public clearAll(): void {
     this.activeOperations.clear();
     this.emit("clear");
+  }
+
+  /**
+   * Check if indexing is currently paused
+   */
+  public get isPaused(): boolean {
+    return this._isPaused;
+  }
+
+  /**
+   * Pause indexing operations
+   */
+  public pause(): void {
+    if (this._isPaused) {
+      return;
+    }
+    this._isPaused = true;
+    this.logger.info("Indexing paused");
+    this.emit("pause");
+    this.emit("progress"); // Trigger UI update
+  }
+
+  /**
+   * Resume indexing operations
+   */
+  public resume(): void {
+    if (!this._isPaused) {
+      return;
+    }
+    this._isPaused = false;
+    this.logger.info("Indexing resumed");
+    
+    // Resolve all waiting pause promises
+    for (const resolvers of this.pauseResolvers.values()) {
+      for (const resolve of resolvers) {
+        resolve();
+      }
+    }
+    this.pauseResolvers.clear();
+    
+    this.emit("resume");
+    this.emit("progress"); // Trigger UI update
+  }
+
+  /**
+   * Toggle pause/resume state
+   */
+  public togglePause(): void {
+    if (this._isPaused) {
+      this.resume();
+    } else {
+      this.pause();
+    }
+  }
+
+  /**
+   * Wait if indexing is paused. Call this at checkpoints in the indexing process.
+   * @param topicId The topic ID to associate with this wait
+   * @returns Promise that resolves when not paused
+   */
+  public async waitIfPaused(topicId: string): Promise<void> {
+    if (!this._isPaused) {
+      return;
+    }
+
+    this.logger.debug("Waiting for resume", { topicId });
+
+    return new Promise<void>((resolve) => {
+      if (!this.pauseResolvers.has(topicId)) {
+        this.pauseResolvers.set(topicId, []);
+      }
+      this.pauseResolvers.get(topicId)!.push(resolve);
+    });
+  }
+
+  /**
+   * Check if there are any active indexing operations
+   */
+  public hasActiveOperations(): boolean {
+    return this.activeOperations.size > 0;
   }
 }

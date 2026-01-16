@@ -20,6 +20,10 @@ Logger.initialize();
 const logger = new Logger("Extension");
 let fileWatcherService: FileWatcherService | null = null;
 
+export function getFileWatcherService(): FileWatcherService | null {
+  return fileWatcherService;
+}
+
 export async function activate(context: vscode.ExtensionContext) {
   logger.info("========================================");
   logger.info("LocalRAG Extension Activation Starting");
@@ -215,6 +219,7 @@ export async function activate(context: vscode.ExtensionContext) {
         const watchFolderSettings = [
           `${CONFIG.ROOT}.${CONFIG.WATCH_FOLDERS}`,
           `${CONFIG.ROOT}.${CONFIG.WATCH_FOLDER}`,
+          `${CONFIG.ROOT}.${CONFIG.WATCH_ON_CHANGES}`,
           `${CONFIG.ROOT}.includeExtensions`,
         ];
         const treeViewConfigPaths = [
@@ -292,6 +297,7 @@ export async function activate(context: vscode.ExtensionContext) {
           try {
             logger.actionStart("File watcher configuration update");
             await fileWatcherService.updateConfiguration();
+            treeDataProvider.refresh(); // Refresh tree to show watch status
             logger.actionComplete("File watcher configuration update");
           } catch (error) {
             const errorMessage =
