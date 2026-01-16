@@ -13,6 +13,7 @@ import { VIEWS, STATE, COMMANDS, CONFIG } from "./utils/constants";
 import { Logger } from "./utils/logger";
 import { GitHubTokenManager } from "./utils/githubTokenManager";
 import { FileWatcherService } from "./utils/fileWatcherService";
+import { getRestServer, disposeRestServer } from "./server/restServer";
 
 // Initialize logger immediately - before any other code
 Logger.initialize();
@@ -210,6 +211,18 @@ export async function activate(context: vscode.ExtensionContext) {
     await fileWatcherService.initialize();
     logger.actionComplete("FileWatcherService initialized");
 
+    // Start REST server for CLI integration
+    logger.actionStart("REST server initialization");
+    try {
+      const restServer = getRestServer();
+      await restServer.start(topicManager, fileWatcherService);
+      logger.actionComplete("REST server started");
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.warn(`REST server failed to start: ${errorMessage}`);
+      // Don't fail extension activation if server fails
+    }
+
     // Register configuration change listener for embedding model
     logger.actionStart("Configuration change listener registration");
     const configChangeDisposable = vscode.workspace.onDidChangeConfiguration(
@@ -342,6 +355,11 @@ export async function deactivate() {
   logger.info("========================================");
 
   try {
+    // Stop REST server
+    logger.actionStart("REST server shutdown");
+    await disposeRestServer();
+    logger.actionComplete("REST server stopped");
+
     // Dispose of FileWatcherService
     if (fileWatcherService) {
       logger.actionStart("FileWatcherService disposal");

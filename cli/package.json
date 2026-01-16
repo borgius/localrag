@@ -1,0 +1,45 @@
+{
+  "name": "lrag",
+  "version": "0.1.5",
+  "description": "CLI tool for searching indexed documents in LocalRAG VS Code extension",
+  "main": "lrag.js",
+  "bin": {
+    "lrag": "lrag.js"
+  },
+  "keywords": [
+    "rag",
+    "search",
+    "cli",
+    "vscode",
+    "localrag",
+    "semantic-search",
+    "retrieval"
+  ],
+  "author": "borgius",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/borgius/localrag"
+  },
+  "bugs": {
+    "url": "https://github.com/borgius/localrag/issues"
+  },
+  "homepage": "https://github.com/borgius/localrag#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "lrag.js",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite build --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0",
+    "vite": "^5.0.0"
+  }
+}

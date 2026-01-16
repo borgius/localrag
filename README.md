@@ -273,6 +273,100 @@ LocalRAG can automatically monitor a folder for changes and keep a default topic
 - ✅ Debounced updates - multiple changes are batched together
 - ✅ Default topic created automatically if no topics exist
 
+### CLI Tool (`lrag`)
+
+LocalRAG includes a command-line interface for searching indexed topics from your terminal. Perfect for quick searches, scripting, and AI agent integration.
+
+#### Installation
+
+```bash
+# Run directly with npx (no installation needed)
+npx localrag --help
+
+# Or install globally
+npm install -g localrag
+```
+
+#### Prerequisites
+
+The CLI requires the LocalRAG VS Code extension to be running. The extension starts a REST server on port 3875 when activated.
+
+1. Open VS Code with your workspace
+2. Ensure the LocalRAG extension is installed and enabled
+3. The server starts automatically when the extension activates
+
+#### Usage
+
+```bash
+# Search (default command)
+lrag "how to configure webpack"
+lrag --search "authentication flow"
+
+# List all topics
+lrag --list
+
+# Get topic details
+lrag --topic Default
+
+# Check status
+lrag --status
+```
+
+#### Options
+
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--search` | `-s` | Search indexed documents (default) |
+| `--list` | `-l` | List all topics |
+| `--topic <name>` | `-t` | Show details for a specific topic |
+| `--status` | | Show extension status |
+| `--json` | `-j` | Output results in JSON format |
+| `--compact` | `-c` | Output compact JSON (implies --json) |
+| `--limit <n>` | `-n` | Maximum results to return (default: 10) |
+| `--help` | `-h` | Show help message |
+| `--version` | `-v` | Show version |
+
+#### Output Formats
+
+**Default (Markdown)**: Human-readable output with colors and formatting
+```bash
+lrag "error handling"
+```
+
+**JSON**: Full metadata for programmatic use
+```bash
+lrag --json "error handling"
+```
+
+**Compact JSON**: Minimal output for AI agents (content, path, score only)
+```bash
+lrag --compact "error handling"
+```
+
+#### Examples
+
+```bash
+# Search with limited results
+lrag -n 5 "database connection"
+
+# Get topics in JSON format
+lrag --list --json
+
+# Check if indexing is in progress
+lrag --status --compact
+
+# Use in scripts
+RESULTS=$(lrag --compact "API authentication")
+echo "$RESULTS" | jq '.results[0].content'
+```
+
+#### Extension Not Running?
+
+If the CLI can't connect to the server, it will:
+1. Check if the extension is installed
+2. Offer to install it if missing
+3. Provide instructions to start VS Code with your workspace
+
 
 ### Agentic Mode Settings
 

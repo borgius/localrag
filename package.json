@@ -2,16 +2,33 @@
   "name": "localrag",
   "displayName": "LocalRAG - Enhanced Local RAG for VS Code",
   "description": "Retrieval-Augmented Generation extension for VSCode with local sentence transformers and semantic chunking",
-  "version": "0.2.9",
+  "version": "0.2.10",
   "publisher": "borgius",
   "icon": "assets/icon.png",
   "license": "MIT",
+  "keywords": [
+    "rag",
+    "retrieval",
+    "embeddings",
+    "vector-search",
+    "semantic-search",
+    "cli",
+    "vscode",
+    "ai",
+    "ml",
+    "transformers"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/borgius/localrag"
   },
+  "bugs": {
+    "url": "https://github.com/borgius/localrag/issues"
+  },
+  "homepage": "https://github.com/borgius/localrag#readme",
   "engines": {
-    "vscode": "^1.105.0"
+    "vscode": "^1.105.0",
+    "node": ">=18.0.0"
   },
   "categories": [
     "Machine Learning",
@@ -451,6 +468,9 @@
     "publish:darwin-arm64": "node scripts/install-platform-deps.js darwin-arm64 && vsce publish --target darwin-arm64",
     "publish:linux-x64": "node scripts/install-platform-deps.js linux-x64 && vsce publish --target linux-x64",
     "publish:linux-arm64": "node scripts/install-platform-deps.js linux-arm64 && vsce publish --target linux-arm64",
+    "publish:cli": "node scripts/publish-cli.js",
+    "publish:cli:beta": "node scripts/publish-cli.js --tag=beta",
+    "publish:cli:dry-run": "node scripts/publish-cli.js --dry-run",
     "pretest": "npm run compile && npm run compile:tests",
     "test": "node ./out/test/test/runTest.js",
     "inspect:chunks": "npm run compile && node scripts/inspect-chunks.js",

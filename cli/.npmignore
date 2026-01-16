@@ -1,0 +1,9 @@
+# Only publish the compiled CLI file and README
+*.ts
+*.md
+!README.md
+node_modules/
+package-lock.json
+vite.config.ts
+tsconfig.json
+.npmignore

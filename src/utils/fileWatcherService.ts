@@ -675,6 +675,13 @@ export class FileWatcherService {
   }
 
   /**
+   * Get configured watch folders
+   */
+  public getConfiguredWatchFolders(): string[] {
+    return [...this.watchFolders];
+  }
+
+  /**
    * Toggle watch on/off
    */
   public async toggleWatch(): Promise<void> {

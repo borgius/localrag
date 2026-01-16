@@ -1,0 +1,43 @@
+# Exclude source files (compiled output is in out/)
+src/
+test/
+*.ts
+!*.d.ts
+tsconfig.json
+tsconfig.test.json
+
+# Exclude development files
+.vscode/
+.vscode-test/
+.github/
+scripts/
+eslint.config.mjs
+.eslintrc.json
+.gitignore
+.editorconfig
+
+# Exclude build artifacts
+*.vsix
+*.tsbuildinfo
+
+# Exclude test files
+**/*.test.*
+**/__tests__/
+**/fixtures/
+out/test/
+
+# Exclude documentation that's not needed for npm
+docs/
+
+# Node modules should not be in npm package
+node_modules/
+out/node_modules/
+
+# Exclude platform-specific binaries (will be installed via optionalDependencies)
+out/node_modules/@lancedb/
+out/node_modules/@img/
+out/node_modules/onnxruntime-node/
+out/node_modules/sharp/
+
+# Keep the bundled model for npm users
+!assets/models/
