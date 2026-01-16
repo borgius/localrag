@@ -1,4 +1,4 @@
-# RAGnarōk Test Suite
+# LocalRAG Test Suite
 
 ## Overview
 

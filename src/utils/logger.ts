@@ -1,5 +1,5 @@
 /**
- * Logging utility for RAGnarōk
+ * Logging utility for LocalRAG
  * Provides structured logging with different levels and context
  */
 
@@ -25,8 +25,8 @@ export class Logger {
    */
   public static initialize(): void {
     if (!Logger.outputChannel) {
-      Logger.outputChannel = vscode.window.createOutputChannel('RAGnarōk');
-      Logger.outputChannel.appendLine('[STARTUP] RAGnarōk extension starting...');
+      Logger.outputChannel = vscode.window.createOutputChannel('LocalRAG');
+      Logger.outputChannel.appendLine('[STARTUP] LocalRAG extension starting...');
       Logger.outputChannel.appendLine(`[STARTUP] Timestamp: ${new Date().toISOString()}`);
       Logger.isInitialized = true;
     }

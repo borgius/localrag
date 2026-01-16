@@ -160,7 +160,7 @@ The extension will recursively load all files from the repository and process th
 
 #### 2c. GitHub Token Management
 
-For accessing private repositories, RAGnarōk securely stores GitHub access tokens per host using VS Code's Secret Storage API.
+For accessing private repositories, LocalRAG securely stores GitHub access tokens per host using VS Code's Secret Storage API.
 
 **Add a Token:**
 
@@ -241,7 +241,7 @@ The RAG tool will:
 
   // Folder watching (optional)
   "localrag.watchFolder": "",  // Absolute path to folder to watch
-  "localrag.watchFolderRecursive": true  // Watch subdirectories
+  "localrag.watchFolders": ["./docs", "./confluence"]
 }
 ```
 
@@ -251,16 +251,14 @@ The RAG tool will:
 
 LocalRAG can automatically monitor a folder for changes and keep a default topic up-to-date:
 
-1. **Set the watch folder**: Configure `localrag.watchFolder` with an absolute path to the folder you want to monitor.
-2. **Choose recursive mode**: Set `localrag.watchFolderRecursive` to `true` to include subdirectories (default) or `false` for only the top-level folder.
-3. **Automatic updates**: When files with supported extensions (`.pdf`, `.md`, `.html`, `.txt`, etc.) are added, modified, or deleted in the watched folder, they are automatically processed and added to the "Default" topic.
+1. **Set the watch folder(s)**: Configure `localrag.watchFolders` with workspace-relative or absolute paths. (Legacy `localrag.watchFolder` is still supported.)
+2. **Automatic updates**: When files with supported extensions (`.pdf`, `.md`, `.html`, `.txt`, etc.) are added, modified, or deleted in the watched folders (including subfolders), they are automatically processed and added to the "Default" topic.
 
 **Example configuration:**
 
 ```json
 {
-  "localrag.watchFolder": "/Users/username/Documents/my-docs",
-  "localrag.watchFolderRecursive": true,
+  "localrag.watchFolders": ["/Users/username/Documents/my-docs"],
   "localrag.includeExtensions": [".pdf", ".md", ".html", ".txt"]
 }
 ```
@@ -315,9 +313,29 @@ Any models you place under `localrag.localModelPath` show up in the tree view al
 
 **LLM Models** (when agentic planning is enabled): models are available via VS Code Copilot / LM API (no external API key required).
 
-- `gpt-4o` (default) - Most intelligent
-- `gpt-4o-mini` - Faster, still capable
-- `gpt-3.5-turbo` - Fastest, most economical
+- `gpt-4o` (default) - 0x
+- `gpt-4.1` - 0x
+- `gpt-5-mini` - 0x
+- `gpt-5` - 1x
+- `gpt-5-codex` - 1x
+- `gpt-5.1` - 1x
+- `gpt-5.1-codex` - 1x
+- `gpt-5.1-codex-mini` - 0.33x
+- `gpt-5.1-codex-max` - 1x
+- `gpt-5.2` - 1x
+- `gpt-5.2-codex` - 1x
+- `claude-haiku-4.5` - 0.33x
+- `claude-sonnet-4` - 1x
+- `claude-sonnet-4.5` - 1x
+- `claude-opus-4.1` - 10x
+- `claude-opus-4.5` - 3x
+- `gemini-2.5-pro` - 1x
+- `gemini-3-flash` - 0.33x
+- `gemini-3-pro` - 1x
+- `grok-code-fast-1` - 0.25x
+- `raptor-mini` - 0x
+
+**Legend:** `0x` = no premium requests (Copilot Free), `1x` = premium requests (Copilot paid). Other values indicate premium multipliers.
 
 ---
 

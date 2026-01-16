@@ -22,7 +22,7 @@ let fileWatcherService: FileWatcherService | null = null;
 
 export async function activate(context: vscode.ExtensionContext) {
   logger.info("========================================");
-  logger.info("RAGnarōk Extension Activation Starting");
+  logger.info("LocalRAG Extension Activation Starting");
   logger.info("========================================");
   
   // Initialize logger with configuration as early as possible
@@ -213,8 +213,8 @@ export async function activate(context: vscode.ExtensionContext) {
         logger.debug("Configuration change detected");
         const localModelPathSetting = `${CONFIG.ROOT}.${CONFIG.LOCAL_MODEL_PATH}`;
         const watchFolderSettings = [
+          `${CONFIG.ROOT}.${CONFIG.WATCH_FOLDERS}`,
           `${CONFIG.ROOT}.${CONFIG.WATCH_FOLDER}`,
-          `${CONFIG.ROOT}.${CONFIG.WATCH_FOLDER_RECURSIVE}`,
           `${CONFIG.ROOT}.includeExtensions`,
         ];
         const treeViewConfigPaths = [
@@ -321,7 +321,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
     logger.info("Extension activation complete");
     logger.info("========================================");
-    logger.info("RAGnarōk Extension Activation Complete");
+    logger.info("LocalRAG Extension Activation Complete");
     logger.info("========================================");
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -332,7 +332,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
 export async function deactivate() {
   logger.info("========================================");
-  logger.info("RAGnarōk Extension Deactivation Starting");
+  logger.info("LocalRAG Extension Deactivation Starting");
   logger.info("========================================");
 
   try {
@@ -358,7 +358,7 @@ export async function deactivate() {
 
     logger.info("Extension deactivation complete");
     logger.info("========================================");
-    logger.info("RAGnarōk Extension Deactivation Complete");
+    logger.info("LocalRAG Extension Deactivation Complete");
     logger.info("========================================");
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);

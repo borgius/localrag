@@ -320,25 +320,8 @@ export class CommandHandler {
         }
       }
 
-      // Ask user about recursive loading if folders are selected
-      let recursiveDirectory = false;
-      if (hasDirectories) {
-        const choice = await vscode.window.showQuickPick(
-          [
-            { label: "Load recursively", description: "Include all files from subfolders", value: true },
-            { label: "Load only from selected folders", description: "Don't scan subfolders", value: false },
-          ],
-          {
-            placeHolder: "One or more folders selected. How would you like to load them?",
-          }
-        );
-
-        if (!choice) {
-          return; // User cancelled
-        }
-
-        recursiveDirectory = choice.value;
-      }
+      // Always load directories recursively
+      const recursiveDirectory = hasDirectories;
 
       logger.info(
         `Adding ${filePaths.length} document(s) to topic: ${selectedTopic.name}`,

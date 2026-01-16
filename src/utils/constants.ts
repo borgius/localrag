@@ -36,7 +36,7 @@ export const CONFIG = {
   AGENTIC_INCLUDE_WORKSPACE: "agenticIncludeWorkspaceContext",
   // Folder watching configuration
   WATCH_FOLDER: "watchFolder",
-  WATCH_FOLDER_RECURSIVE: "watchFolderRecursive",
+  WATCH_FOLDERS: "watchFolders",
 } as const;
 
 /**

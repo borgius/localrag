@@ -423,7 +423,7 @@ export class EmbeddingService {
           const fallbackReason = this.lastSuccessfulModel
             ? `previously downloaded model "${fallbackModel}"`
             : `default model "${fallbackModel}"`;
-          const message = `RAGnarōk: Model "${targetModel}" could not be loaded. Falling back to ${fallbackReason}.`;
+          const message = `LocalRAG: Model "${targetModel}" could not be loaded. Falling back to ${fallbackReason}.`;
           this.logger.warn(message);
           vscode.window.showWarningMessage(message);
 

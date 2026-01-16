@@ -131,16 +131,52 @@
         "localrag.agenticLLMModel": {
           "type": "string",
           "default": "gpt-4o",
-          "markdownDescription": "**LLM model to use** for query planning and evaluation:\n\n- **gpt-4o** (default): Most intelligent, best reasoning\n- **gpt-4o-mini**: Faster, cheaper, still very capable\n- **gpt-3.5-turbo**: Fastest, most economical\n\n**Performance:**\n- gpt-4o: Best quality, slower, more tokens\n- gpt-4o-mini: Good balance\n- gpt-3.5-turbo: Fast, lower quality\n\n⚠️ _Only applies when LLM Mode is enabled_",
+          "markdownDescription": "**LLM model to use** for query planning and evaluation. Models shown include all Copilot Free (0x) and Paid (1x) options, plus any premium multipliers where applicable. Availability depends on your Copilot plan and enabled model providers.\n\n**Legend:**\n- **0x** = no premium requests (Copilot Free)\n- **1x** = premium requests (Copilot paid)\n\n⚠️ _Only applies when LLM Mode is enabled_",
           "enum": [
             "gpt-4o",
-            "gpt-4o-mini",
-            "gpt-3.5-turbo"
+            "gpt-4.1",
+            "gpt-5-mini",
+            "gpt-5",
+            "gpt-5-codex",
+            "gpt-5.1",
+            "gpt-5.1-codex",
+            "gpt-5.1-codex-mini",
+            "gpt-5.1-codex-max",
+            "gpt-5.2",
+            "gpt-5.2-codex",
+            "claude-haiku-4.5",
+            "claude-sonnet-4",
+            "claude-sonnet-4.5",
+            "claude-opus-4.1",
+            "claude-opus-4.5",
+            "gemini-2.5-pro",
+            "gemini-3-flash",
+            "gemini-3-pro",
+            "grok-code-fast-1",
+            "raptor-mini"
           ],
           "enumDescriptions": [
-            "GPT-4o: Most intelligent, best for complex reasoning (slower, more expensive)",
-            "GPT-4o-mini: Balanced performance and cost (recommended for most uses)",
-            "GPT-3.5 Turbo: Fastest and most economical (lower quality reasoning)"
+            "GPT-4o: Strong reasoning, 0x",
+            "GPT-4.1: Balanced reasoning and speed, 0x",
+            "GPT-5 mini: Fast, economical, 0x",
+            "GPT-5: High accuracy, 1x",
+            "GPT-5-Codex: Coding-optimized, 1x",
+            "GPT-5.1: Updated general model, 1x",
+            "GPT-5.1-Codex: Coding-optimized, 1x",
+            "GPT-5.1-Codex-Mini: Faster coding model, 0.33x",
+            "GPT-5.1-Codex-Max: Large coding model, 1x",
+            "GPT-5.2: Latest general model, 1x",
+            "GPT-5.2-Codex: Latest coding model, 1x",
+            "Claude Haiku 4.5: Fast and lightweight, 0.33x",
+            "Claude Sonnet 4: Balanced reasoning, 1x",
+            "Claude Sonnet 4.5: Improved reasoning, 1x",
+            "Claude Opus 4.1: Deep reasoning, 10x",
+            "Claude Opus 4.5: Deep reasoning, 3x",
+            "Gemini 2.5 Pro: Strong reasoning, 1x",
+            "Gemini 3 Flash: Fast and lightweight, 0.33x",
+            "Gemini 3 Pro: High accuracy, 1x",
+            "Grok Code Fast 1: Fast coding model, 0.25x",
+            "Raptor mini: Fine-tuned GPT-5 mini, 0x"
           ],
           "order": 15
         },
@@ -149,12 +185,6 @@
           "default": true,
           "markdownDescription": "**Include workspace context:** Pass selected code, active file, imports, and symbols to Copilot (like #codebase).\n\n**Includes:**\n- Selected code (max 1000 chars)\n- File imports and symbols\n- Workspace name\n\n**Privacy:** Only relative paths, no sensitive data\n\n⚠️ _Only applies when LLM Mode is enabled_",
           "order": 16
-        },
-        "localrag.recursiveDirectory": {
-          "type": "boolean",
-          "default": false,
-          "markdownDescription": "**Recursively scan directories** when adding folders to topics. When enabled, all subdirectories will be scanned for supported files. When disabled, only files in the selected directory will be included.",
-          "order": 17
         },
         "localrag.includeExtensions": {
           "type": "array",
@@ -172,17 +202,17 @@
           "markdownDescription": "**File extensions to include** when scanning directories for documents. Only files with these extensions will be processed. Leave empty to include all supported extensions.",
           "order": 18
         },
-        "localrag.watchFolder": {
-          "type": "string",
-          "default": "",
-          "markdownDescription": "**Folder to watch for changes**: Specify an absolute path to a folder that will be automatically monitored. When files are added, modified, or deleted in this folder, the default topic will be automatically updated. Leave empty to disable folder watching.",
+        "localrag.watchFolders": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "./docs",
+            "./confluence"
+          ],
+          "markdownDescription": "**Folders to watch for changes**: List of folder paths (absolute or workspace-relative) that will be monitored. When files are added, modified, or deleted in these folders, the default topic is automatically updated. Leave empty to disable folder watching.",
           "order": 19
-        },
-        "localrag.watchFolderRecursive": {
-          "type": "boolean",
-          "default": true,
-          "markdownDescription": "**Watch folder recursively**: When enabled, subdirectories of the watch folder will also be monitored for changes. Only applies when `watchFolder` is set.",
-          "order": 20
         }
       }
     },

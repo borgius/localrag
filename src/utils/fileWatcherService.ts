@@ -8,15 +8,15 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import { Logger } from "./logger";
 import { TopicManager } from "../managers/topicManager";
-import { CONFIG, EXTENSION } from "./constants";
+import { CONFIG, DEFAULTS, EXTENSION } from "./constants";
 import { ProgressTracker } from "./progressTracker";
 
 export class FileWatcherService {
   private logger: Logger;
-  private watcher: vscode.FileSystemWatcher | null = null;
+  private watchers: Map<string, vscode.FileSystemWatcher> = new Map();
   private topicManager: TopicManager;
   private context: vscode.ExtensionContext;
-  private watchFolder: string = "";
+  private watchFolders: string[] = [];
   private isRecursive: boolean = true;
   private includeExtensions: string[] = [];
   private defaultTopicId: string | null = null;
@@ -40,32 +40,52 @@ export class FileWatcherService {
     this.logger.info("Initializing FileWatcherService");
 
     const config = vscode.workspace.getConfiguration(CONFIG.ROOT);
-    this.watchFolder = config.get<string>(CONFIG.WATCH_FOLDER, "");
-    this.isRecursive = config.get<boolean>(CONFIG.WATCH_FOLDER_RECURSIVE, true);
-    this.includeExtensions = config.get<string[]>("includeExtensions", []);
+    const configuredFolders = config.get<string[]>(CONFIG.WATCH_FOLDERS, []);
+    const legacyFolder = config.get<string>(CONFIG.WATCH_FOLDER, "");
+    this.isRecursive = true;
+    this.includeExtensions = config.get<string[]>(
+      "includeExtensions",
+      DEFAULTS.INCLUDE_EXTENSIONS
+    );
+    if (this.includeExtensions.length === 0) {
+      this.includeExtensions = DEFAULTS.INCLUDE_EXTENSIONS;
+    }
+    this.includeExtensions = this.includeExtensions.map((ext) => ext.toLowerCase());
 
-    if (!this.watchFolder || this.watchFolder.trim().length === 0) {
-      this.logger.info("No watch folder configured, skipping file watcher setup");
+    this.watchFolders = this.normalizeWatchFolders(configuredFolders, legacyFolder);
+
+    if (this.watchFolders.length === 0) {
+      this.logger.info("No watch folders configured, skipping file watcher setup");
       return;
     }
 
-    // Ensure the watch folder exists
-    try {
-      const stats = await fs.stat(this.watchFolder);
-      if (!stats.isDirectory()) {
-        this.logger.warn("Watch folder is not a directory", { path: this.watchFolder });
+    // Ensure the watch folders exist
+    const validFolders: string[] = [];
+    for (const folder of this.watchFolders) {
+      try {
+        const stats = await fs.stat(folder);
+        if (!stats.isDirectory()) {
+          this.logger.warn("Watch folder is not a directory", { path: folder });
+          vscode.window.showWarningMessage(
+            `Watch folder is not a directory: ${folder}`
+          );
+          continue;
+        }
+        validFolders.push(folder);
+      } catch (error) {
+        this.logger.warn("Watch folder does not exist", { path: folder });
         vscode.window.showWarningMessage(
-          `Watch folder is not a directory: ${this.watchFolder}`
+          `Watch folder does not exist: ${folder}`
         );
-        return;
       }
-    } catch (error) {
-      this.logger.warn("Watch folder does not exist", { path: this.watchFolder });
-      vscode.window.showWarningMessage(
-        `Watch folder does not exist: ${this.watchFolder}`
-      );
+    }
+
+    if (validFolders.length === 0) {
+      this.logger.info("No valid watch folders found, skipping file watcher setup");
       return;
     }
+
+    this.watchFolders = validFolders;
 
     // Ensure default topic exists (reuses TopicManager's method)
     await this.topicManager.ensureInitialized();
@@ -73,59 +93,264 @@ export class FileWatcherService {
     this.defaultTopicId = defaultTopic.id;
     this.logger.info("Default topic ready for folder watching", { topicId: this.defaultTopicId });
 
-    // Setup file watcher
-    await this.setupWatcher();
+    // Seed default topic with existing files in watch folders
+    await this.seedDefaultTopicFromExistingFiles();
+
+    // Setup file watchers
+    await this.setupWatchers();
   }
 
   /**
-   * Setup file system watcher for the configured folder
+   * Setup file system watchers for all configured folders
    */
-  private async setupWatcher(): Promise<void> {
-    if (!this.watchFolder || !this.defaultTopicId) {
+  private async setupWatchers(): Promise<void> {
+    if (this.watchFolders.length === 0 || !this.defaultTopicId) {
       return;
     }
 
-    // Dispose existing watcher if any
-    if (this.watcher) {
-      this.watcher.dispose();
+    for (const folder of this.watchFolders) {
+      await this.setupWatcherForFolder(folder);
     }
 
-    // Create pattern for watching
+    const folderLabel = this.watchFolders.length === 1
+      ? this.watchFolders[0]
+      : `${this.watchFolders.length} folders`;
+
+    this.logger.info("File watchers active", {
+      folders: this.watchFolders,
+      recursive: this.isRecursive
+    });
+
+    vscode.window.showInformationMessage(
+      `Watching ${folderLabel} (${this.isRecursive ? "recursive" : "non-recursive"})`
+    );
+  }
+
+  /**
+   * Setup file system watcher for a specific folder
+   */
+  private async setupWatcherForFolder(folder: string): Promise<void> {
+    if (!folder || !this.defaultTopicId) {
+      return;
+    }
+
+    // Dispose existing watcher for folder if any
+    const existingWatcher = this.watchers.get(folder);
+    if (existingWatcher) {
+      existingWatcher.dispose();
+      this.watchers.delete(folder);
+    }
+
     const pattern = this.isRecursive
-      ? new vscode.RelativePattern(this.watchFolder, "**/*")
-      : new vscode.RelativePattern(this.watchFolder, "*");
+      ? new vscode.RelativePattern(folder, "**/*")
+      : new vscode.RelativePattern(folder, "*");
 
     this.logger.info("Creating file watcher", {
-      folder: this.watchFolder,
+      folder,
       recursive: this.isRecursive,
       pattern: pattern.pattern
     });
 
-    this.watcher = vscode.workspace.createFileSystemWatcher(pattern);
+    const watcher = vscode.workspace.createFileSystemWatcher(pattern);
 
-    // Handle file creation
-    this.watcher.onDidCreate((uri) => {
+    watcher.onDidCreate((uri) => {
       this.logger.debug("File created", { path: uri.fsPath });
       this.handleFileChange(uri, "create");
     });
 
-    // Handle file changes
-    this.watcher.onDidChange((uri) => {
+    watcher.onDidChange((uri) => {
       this.logger.debug("File changed", { path: uri.fsPath });
       this.handleFileChange(uri, "change");
     });
 
-    // Handle file deletion
-    this.watcher.onDidDelete((uri) => {
+    watcher.onDidDelete((uri) => {
       this.logger.debug("File deleted", { path: uri.fsPath });
       this.handleFileChange(uri, "delete");
     });
 
-    this.logger.info("File watcher active", { folder: this.watchFolder });
-    
-    vscode.window.showInformationMessage(
-      `Watching folder: ${this.watchFolder} (${this.isRecursive ? "recursive" : "non-recursive"})`
+    this.watchers.set(folder, watcher);
+  }
+
+  /**
+   * Normalize and resolve watch folders
+   */
+  private normalizeWatchFolders(configuredFolders: string[], legacyFolder: string): string[] {
+    const rawFolders = [...configuredFolders];
+    if (legacyFolder && legacyFolder.trim().length > 0) {
+      rawFolders.push(legacyFolder);
+    }
+
+    const resolved = rawFolders
+      .map((folder) => folder.trim())
+      .filter((folder) => folder.length > 0)
+      .map((folder) => this.resolveFolderPath(folder));
+
+    const unique = Array.from(new Set(resolved));
+    return unique;
+  }
+
+  /**
+   * Resolve workspace-relative folder paths
+   */
+  private resolveFolderPath(folder: string): string {
+    if (path.isAbsolute(folder)) {
+      return folder;
+    }
+
+    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (workspaceRoot) {
+      return path.resolve(workspaceRoot, folder);
+    }
+
+    return path.resolve(folder);
+  }
+
+  /**
+   * Seed default topic with existing files in watch folders
+   */
+  private async seedDefaultTopicFromExistingFiles(): Promise<void> {
+    if (!this.defaultTopicId || this.watchFolders.length === 0) {
+      return;
+    }
+
+    const filesToProcess = new Set<string>();
+    for (const folder of this.watchFolders) {
+      const folderFiles = await this.collectFilesFromDirectory(
+        folder,
+        this.isRecursive,
+        this.includeExtensions
+      );
+      for (const filePath of folderFiles) {
+        filesToProcess.add(filePath);
+      }
+    }
+
+    const existingFiles = Array.from(filesToProcess);
+    if (existingFiles.length === 0) {
+      this.logger.info("No existing files found in watch folders to seed");
+      return;
+    }
+
+    this.logger.info("Seeding default topic with existing files", {
+      count: existingFiles.length,
+      folders: this.watchFolders
+    });
+
+    const defaultTopic = this.topicManager.getTopic(this.defaultTopicId);
+    const topicName = defaultTopic?.name || EXTENSION.DEFAULT_TOPIC_NAME;
+
+    this.progressTracker.startTracking(
+      this.defaultTopicId,
+      topicName,
+      existingFiles.length
     );
+
+    await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: `Seeding watched folders...`,
+        cancellable: false,
+      },
+      async (progress) => {
+        progress.report({ message: `Processing ${existingFiles.length} file(s)...` });
+
+        await this.topicManager.ensureInitialized();
+
+        let processedCount = 0;
+        for (const filePath of existingFiles) {
+          try {
+            const fileName = path.basename(filePath);
+            progress.report({ message: `Removing old version of ${fileName}...` });
+            this.progressTracker.updateProgress(this.defaultTopicId!, {
+              stage: "removing",
+              currentFile: fileName,
+              processedFiles: processedCount,
+            });
+
+            await this.topicManager.removeDocumentByFilePath(
+              this.defaultTopicId!,
+              filePath
+            );
+          } catch (error) {
+            this.logger.debug("Could not remove old document (might be new)", {
+              filePath,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }
+
+        progress.report({ message: `Adding ${existingFiles.length} file(s)...` });
+        processedCount = 0;
+        const results = await this.topicManager.addDocuments(
+          this.defaultTopicId!,
+          existingFiles,
+          {
+            onProgress: (pipelineProgress) => {
+              progress.report({ message: pipelineProgress.message });
+
+              this.progressTracker.updateProgress(this.defaultTopicId!, {
+                stage: pipelineProgress.stage,
+                currentFile: pipelineProgress.details?.fileName || undefined,
+                processedFiles: processedCount,
+                percentage: Math.round((processedCount / existingFiles.length) * 100),
+              });
+
+              if (pipelineProgress.stage === "complete") {
+                processedCount++;
+              }
+            },
+          }
+        );
+
+        this.logger.info("Watch folder seed complete", {
+          processed: existingFiles.length,
+          successful: results.length,
+        });
+
+        this.progressTracker.completeTracking(this.defaultTopicId!);
+      }
+    );
+  }
+
+  /**
+   * Collect files from a directory
+   */
+  private async collectFilesFromDirectory(
+    dirPath: string,
+    recursive: boolean,
+    includeExtensions: string[]
+  ): Promise<string[]> {
+    const files: string[] = [];
+
+    try {
+      const entries = await fs.readdir(dirPath, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = path.join(dirPath, entry.name);
+
+        if (entry.isDirectory()) {
+          if (recursive) {
+            const subFiles = await this.collectFilesFromDirectory(
+              fullPath,
+              recursive,
+              includeExtensions
+            );
+            files.push(...subFiles);
+          }
+        } else if (entry.isFile()) {
+          const ext = path.extname(entry.name).toLowerCase();
+          if (includeExtensions.includes(ext)) {
+            files.push(fullPath);
+          }
+        }
+      }
+    } catch (error) {
+      this.logger.warn("Failed to read directory during seeding", {
+        error: error instanceof Error ? error.message : String(error),
+        dirPath,
+      });
+    }
+
+    return files;
   }
 
   /**
@@ -300,14 +525,19 @@ export class FileWatcherService {
     this.logger.info("Updating configuration");
 
     const config = vscode.workspace.getConfiguration(CONFIG.ROOT);
-    const newWatchFolder = config.get<string>(CONFIG.WATCH_FOLDER, "");
-    const newRecursive = config.get<boolean>(CONFIG.WATCH_FOLDER_RECURSIVE, true);
-    const newExtensions = config.get<string[]>("includeExtensions", []);
+    const configuredFolders = config.get<string[]>(CONFIG.WATCH_FOLDERS, []);
+    const legacyFolder = config.get<string>(CONFIG.WATCH_FOLDER, "");
+    let newExtensions = config.get<string[]>("includeExtensions", DEFAULTS.INCLUDE_EXTENSIONS);
+    if (newExtensions.length === 0) {
+      newExtensions = DEFAULTS.INCLUDE_EXTENSIONS;
+    }
+    newExtensions = newExtensions.map((ext) => ext.toLowerCase());
+
+    const newWatchFolders = this.normalizeWatchFolders(configuredFolders, legacyFolder);
 
     // Check if configuration changed
     const configChanged =
-      newWatchFolder !== this.watchFolder ||
-      newRecursive !== this.isRecursive ||
+      JSON.stringify(newWatchFolders) !== JSON.stringify(this.watchFolders) ||
       JSON.stringify(newExtensions) !== JSON.stringify(this.includeExtensions);
 
     if (!configChanged) {
@@ -316,8 +546,8 @@ export class FileWatcherService {
     }
 
     // Update configuration
-    this.watchFolder = newWatchFolder;
-    this.isRecursive = newRecursive;
+    this.watchFolders = newWatchFolders;
+    this.isRecursive = true;
     this.includeExtensions = newExtensions;
 
     // Restart watcher
@@ -336,10 +566,10 @@ export class FileWatcherService {
       this.updateTimer = null;
     }
 
-    if (this.watcher) {
-      this.watcher.dispose();
-      this.watcher = null;
+    for (const watcher of this.watchers.values()) {
+      watcher.dispose();
     }
+    this.watchers.clear();
 
     this.pendingChanges.clear();
     this.defaultTopicId = null;

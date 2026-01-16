@@ -229,13 +229,13 @@ export class DocumentLoaderFactory {
           // Collect files from directory
           const files = await this.collectFilesFromDirectory(
             options.filePath,
-            options.recursiveDirectory ?? false,
+            options.recursiveDirectory ?? true,
             options.includeExtensions
           );
           this.logger.info("Collected files from directory", {
             directory: options.filePath,
             fileCount: files.length,
-            recursive: options.recursiveDirectory ?? false,
+            recursive: options.recursiveDirectory ?? true,
           });
           // Add each file with the same options (except filePath)
           for (const file of files) {
