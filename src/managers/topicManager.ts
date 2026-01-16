@@ -267,6 +267,45 @@ export class TopicManager {
   }
 
   /**
+   * Delete only the vector store for a topic (keeps topic metadata)
+   * Used when reindexing with a different model
+   */
+  public async deleteTopicVectorStore(topicId: string): Promise<void> {
+    this.logger.info("Deleting topic vector store", { topicId });
+
+    try {
+      if (!this.topicsIndex || !this.vectorStoreFactory) {
+        throw new Error("TopicManager not initialized");
+      }
+
+      // Check if topic exists
+      if (!this.topicsIndex.topics[topicId]) {
+        throw new Error(`Topic not found: ${topicId}`);
+      }
+
+      // Delete vector store
+      await this.vectorStoreFactory.deleteStore(topicId);
+
+      // Remove from cache
+      this.vectorStoreCache.delete(topicId);
+
+      // Clear folder chunk statistics since we'll rebuild them
+      this.folderChunkStats.delete(topicId);
+
+      // Notify external components to clear their caches
+      this.notifyAgentCacheCleanup(topicId);
+
+      this.logger.info("Topic vector store deleted", { topicId });
+    } catch (error) {
+      this.logger.error("Failed to delete topic vector store", {
+        error: error instanceof Error ? error.message : String(error),
+        topicId,
+      });
+      throw error;
+    }
+  }
+
+  /**
    * Delete a topic and its vector store
    */
   public async deleteTopic(topicId: string): Promise<void> {
@@ -769,6 +808,45 @@ export class TopicManager {
   }
 
   /**
+   * Get the watch folder that contains a given file path
+   * Returns the resolved watch folder path and its display name (basename or relative path)
+   */
+  private getWatchFolderForPath(filePath: string): { watchFolder: string; displayName: string } | null {
+    const config = vscode.workspace.getConfiguration(CONFIG.ROOT);
+    const watchFolders = config.get<string[]>(CONFIG.WATCH_FOLDERS, []);
+    const legacyWatchFolder = config.get<string>(CONFIG.WATCH_FOLDER, "");
+    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || "";
+    
+    // Combine all configured folders
+    const allFolders = [...watchFolders];
+    if (legacyWatchFolder && legacyWatchFolder.trim().length > 0) {
+      allFolders.push(legacyWatchFolder);
+    }
+    
+    const normalizedFilePath = path.normalize(filePath);
+    
+    for (const folder of allFolders) {
+      const trimmedFolder = folder.trim();
+      if (trimmedFolder.length === 0) continue;
+      
+      // Resolve relative paths to absolute
+      const resolvedFolder = path.isAbsolute(trimmedFolder)
+        ? trimmedFolder
+        : path.resolve(workspaceRoot, trimmedFolder);
+      
+      const normalizedWatchFolder = path.normalize(resolvedFolder);
+      
+      if (normalizedFilePath.startsWith(normalizedWatchFolder + path.sep) || normalizedFilePath === normalizedWatchFolder) {
+        // Use the folder's basename as the display name
+        const displayName = path.basename(normalizedWatchFolder);
+        return { watchFolder: normalizedWatchFolder, displayName };
+      }
+    }
+    
+    return null;
+  }
+
+  /**
    * Update folder chunk statistics when a document is added
    */
   public updateFolderChunkStats(topicId: string, filePath: string, chunkCount: number): void {
@@ -782,35 +860,54 @@ export class TopicManager {
       this.folderChunkStats.set(topicId, stats);
     }
 
-    // Parse the file path and build/update the hierarchy
-    const normalizedPath = path.normalize(filePath);
-    const parts = normalizedPath.split(path.sep).filter(p => p.length > 0);
+    const normalizedFilePath = path.normalize(filePath);
     
-    if (parts.length === 0) {
+    // Find which watch folder this file belongs to
+    const watchFolderInfo = this.getWatchFolderForPath(filePath);
+    
+    let rootKey: string;
+    let rootDisplayName: string;
+    let relativeParts: string[];
+    
+    if (watchFolderInfo) {
+      // Build tree relative to watch folder
+      rootKey = watchFolderInfo.watchFolder;
+      rootDisplayName = watchFolderInfo.displayName;
+      
+      // Get path relative to watch folder
+      const relativePath = path.relative(watchFolderInfo.watchFolder, normalizedFilePath);
+      relativeParts = relativePath.split(path.sep).filter(p => p.length > 0);
+    } else {
+      // Fallback: use file's immediate parent folder as root (for files not in watch folders)
+      const parentDir = path.dirname(normalizedFilePath);
+      rootKey = parentDir;
+      rootDisplayName = path.basename(parentDir);
+      relativeParts = [path.basename(normalizedFilePath)];
+    }
+    
+    if (relativeParts.length === 0) {
       return;
     }
 
-    // Determine root (first significant part of path)
-    const rootPath = path.isAbsolute(filePath) ? path.sep + parts[0] : parts[0];
-    
-    if (!stats.roots.has(rootPath)) {
-      stats.roots.set(rootPath, {
-        name: parts[0],
-        path: rootPath,
-        isFile: parts.length === 1,
+    // Create root node if it doesn't exist
+    if (!stats.roots.has(rootKey)) {
+      stats.roots.set(rootKey, {
+        name: rootDisplayName,
+        path: rootKey,
+        isFile: false,
         chunkCount: 0,
         children: new Map(),
       });
     }
 
-    // Traverse/build the tree
-    let currentNode = stats.roots.get(rootPath)!;
-    let currentPath = rootPath;
+    // Traverse/build the tree from the root
+    let currentNode = stats.roots.get(rootKey)!;
+    let currentPath = rootKey;
 
-    for (let i = 1; i < parts.length; i++) {
-      const part = parts[i];
+    for (let i = 0; i < relativeParts.length; i++) {
+      const part = relativeParts[i];
       currentPath = path.join(currentPath, part);
-      const isLastPart = i === parts.length - 1;
+      const isLastPart = i === relativeParts.length - 1;
 
       if (!currentNode.children.has(part)) {
         currentNode.children.set(part, {
@@ -849,15 +946,30 @@ export class TopicManager {
       return;
     }
 
-    const normalizedPath = path.normalize(filePath);
-    const parts = normalizedPath.split(path.sep).filter(p => p.length > 0);
+    const normalizedFilePath = path.normalize(filePath);
     
-    if (parts.length === 0) {
+    // Find which watch folder this file belongs to (same logic as updateFolderChunkStats)
+    const watchFolderInfo = this.getWatchFolderForPath(filePath);
+    
+    let rootKey: string;
+    let relativeParts: string[];
+    
+    if (watchFolderInfo) {
+      rootKey = watchFolderInfo.watchFolder;
+      const relativePath = path.relative(watchFolderInfo.watchFolder, normalizedFilePath);
+      relativeParts = relativePath.split(path.sep).filter(p => p.length > 0);
+    } else {
+      // Fallback: try to find the file in existing roots
+      const parentDir = path.dirname(normalizedFilePath);
+      rootKey = parentDir;
+      relativeParts = [path.basename(normalizedFilePath)];
+    }
+    
+    if (relativeParts.length === 0) {
       return;
     }
 
-    const rootPath = path.isAbsolute(filePath) ? path.sep + parts[0] : parts[0];
-    const root = stats.roots.get(rootPath);
+    const root = stats.roots.get(rootKey);
     if (!root) {
       return;
     }
@@ -866,8 +978,8 @@ export class TopicManager {
     let currentNode = root;
     const pathStack: { parent: FolderChunkNode; childKey: string }[] = [];
 
-    for (let i = 1; i < parts.length; i++) {
-      const part = parts[i];
+    for (let i = 0; i < relativeParts.length; i++) {
+      const part = relativeParts[i];
       const child = currentNode.children.get(part);
       if (!child) {
         return; // File not found in stats
@@ -894,12 +1006,12 @@ export class TopicManager {
       }
     } else {
       // The file is directly under root
-      stats.roots.delete(rootPath);
+      stats.roots.delete(rootKey);
     }
 
     // Remove empty roots
     if (root.children.size === 0 && !root.isFile) {
-      stats.roots.delete(rootPath);
+      stats.roots.delete(rootKey);
     }
 
     // Recalculate totals

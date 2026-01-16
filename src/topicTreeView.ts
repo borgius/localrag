@@ -9,7 +9,7 @@ import { Topic, Document, RetrievalStrategy, FolderChunkNode } from "./utils/typ
 import { Logger } from "./utils/logger";
 import { CONFIG, COMMANDS } from "./utils/constants";
 import { EmbeddingService, type AvailableModel } from "./embeddings/embeddingService";
-import { ProgressTracker, IndexingProgress } from "./utils/progressTracker";
+import { ProgressTracker, IndexingProgress, ActiveFileInfo } from "./utils/progressTracker";
 
 const logger = new Logger("TopicTreeView");
 
@@ -96,13 +96,20 @@ export class TopicTreeDataProvider
           return [];
         }
       } else if (element.type === "topic" && element.topic) {
-        // Show statistics and documents for this topic
+        // Show statistics, watch folders directly, and active files for this topic
         const items: TopicTreeItem[] = [];
 
         // Check for active indexing progress
         const progress = this.progressTracker.getProgress(element.topic.id);
         if (progress) {
           items.push(new TopicTreeItem(progress, "progress", element.topic.id));
+          
+          // Show currently active files being processed
+          if (progress.activeFiles && progress.activeFiles.size > 0) {
+            for (const activeFile of progress.activeFiles.values()) {
+              items.push(new TopicTreeItem(activeFile, "active-file", element.topic.id));
+            }
+          }
         }
 
         // Add stats item with topicId for folder hierarchy
@@ -111,20 +118,39 @@ export class TopicTreeDataProvider
           items.push(new TopicTreeItem(stats, "topic-stats", element.topic.id));
         }
 
-        // Add documents
-        const documents = topicManager.getTopicDocuments(element.topic.id);
-        if (documents.length > 0) {
-          items.push(
-            ...documents.map((doc: any) => new TopicTreeItem(doc, "document"))
-          );
+        // Add watch folder roots directly under topic (not under Statistics)
+        const folderStats = topicManager.getFolderChunkStats(element.topic.id);
+        if (folderStats && folderStats.roots.size > 0) {
+          for (const root of folderStats.roots.values()) {
+            // The root node now has the correct name (watch folder basename) from TopicManager
+            items.push(new TopicTreeItem(root, "watch-folder-root", element.topic.id));
+          }
         }
 
         return items;
       } else if (element.type === "topic-stats" && element.data) {
         // Show detailed statistics with folder hierarchy
         return this.getStatisticsItems(element.data, element.topicId);
+      } else if (element.type === "watch-folder-root" && element.data) {
+        // Show children of a watch folder root
+        const node = element.data as FolderChunkNode;
+        if (node.children.size === 0) {
+          return [];
+        }
+        const items: TopicTreeItem[] = [];
+        // Sort: folders first, then files, both alphabetically
+        const children = Array.from(node.children.values()).sort((a, b) => {
+          if (a.isFile === b.isFile) {
+            return a.name.localeCompare(b.name);
+          }
+          return a.isFile ? 1 : -1;
+        });
+        for (const child of children) {
+          items.push(new TopicTreeItem(child, "folder-node", element.topicId));
+        }
+        return items;
       } else if (element.type === "folder-stats-root" && element.data) {
-        // Show root level folders for a topic
+        // Show root level folders for a topic (legacy - from Statistics)
         const topicManager = await this.topicManager;
         const folderStats = topicManager.getFolderChunkStats(element.topicId!);
         if (!folderStats || folderStats.roots.size === 0) {
@@ -212,6 +238,24 @@ export class TopicTreeDataProvider
       )
     );
 
+    // Chunk size
+    const chunkSize = config.get<number>(CONFIG.CHUNK_SIZE, 512);
+    items.push(
+      new TopicTreeItem(
+        { key: "chunk-size", value: chunkSize },
+        "config-item"
+      )
+    );
+
+    // Chunk overlap
+    const chunkOverlap = config.get<number>(CONFIG.CHUNK_OVERLAP, 50);
+    items.push(
+      new TopicTreeItem(
+        { key: "chunk-overlap", value: chunkOverlap },
+        "config-item"
+      )
+    );
+
     // Agentic mode status
     const useAgenticMode = config.get<boolean>(CONFIG.USE_AGENTIC_MODE, false);
     items.push(
@@ -286,10 +330,10 @@ export class TopicTreeDataProvider
       )
     );
 
-    // Embedding model
+    // Embedding model (clickable for reindex)
     items.push(
       new TopicTreeItem(
-        { key: "embedding-model", value: stats.embeddingModel },
+        { key: "stat-embedding-model", value: stats.embeddingModel, topicId },
         "stat-item"
       )
     );
@@ -303,20 +347,7 @@ export class TopicTreeDataProvider
       )
     );
 
-    // Add folder hierarchy if available
-    if (topicId) {
-      const topicManager = await this.topicManager;
-      const folderStats = topicManager.getFolderChunkStats(topicId);
-      if (folderStats && folderStats.roots.size > 0) {
-        items.push(
-          new TopicTreeItem(
-            { key: "folder-breakdown", totalChunks: folderStats.totalChunks },
-            "folder-stats-root",
-            topicId
-          )
-        );
-      }
-    }
+    // Note: Folder breakdown is now shown directly under topic, not here
 
     return items;
   }
@@ -326,7 +357,7 @@ export class TopicTreeItem extends vscode.TreeItem {
   public readonly topicId?: string;
   
   constructor(
-    public readonly data: Topic | Document | IndexingProgress | FolderChunkNode | any,
+    public readonly data: Topic | Document | IndexingProgress | FolderChunkNode | ActiveFileInfo | any,
     public readonly type:
       | "topic"
       | "document"
@@ -337,7 +368,9 @@ export class TopicTreeItem extends vscode.TreeItem {
       | "stat-item"
       | "progress"
       | "folder-stats-root"
-      | "folder-node",
+      | "folder-node"
+      | "watch-folder-root"
+      | "active-file",
     topicId?: string
   ) {
     super(
@@ -369,10 +402,21 @@ export class TopicTreeItem extends vscode.TreeItem {
         return TopicTreeItem.formatProgressLabel(data);
       case "folder-stats-root":
         return `📁 Folder Breakdown (${data.totalChunks} chunks)`;
+      case "watch-folder-root":
+        // The name now contains the watch folder basename (set by TopicManager)
+        return `📁 ${data.name} (${data.chunkCount} chunks)`;
       case "folder-node":
         const node = data as FolderChunkNode;
         const icon = node.isFile ? "📄" : "📁";
         return `${icon} ${node.name} (${node.chunkCount} chunks)`;
+      case "active-file":
+        const activeFile = data as ActiveFileInfo;
+        const stageIcon = activeFile.stage === "loading" ? "📥" 
+          : activeFile.stage === "chunking" ? "✂️" 
+          : activeFile.stage === "embedding" ? "🔢" 
+          : "💾";
+        const chunkInfo = activeFile.chunkCount !== undefined ? ` (${activeFile.chunkCount} chunks)` : "";
+        return `${stageIcon} ${activeFile.relativePath}${chunkInfo}`;
       default:
         return "Unknown";
     }
@@ -389,6 +433,13 @@ export class TopicTreeItem extends vscode.TreeItem {
       case "topic-stats":
       case "folder-stats-root":
         return vscode.TreeItemCollapsibleState.Collapsed;
+      case "watch-folder-root":
+        // Watch folder root should be collapsible if it has children
+        const watchRoot = data as FolderChunkNode;
+        if (watchRoot && watchRoot.children && watchRoot.children.size > 0) {
+          return vscode.TreeItemCollapsibleState.Collapsed;
+        }
+        return vscode.TreeItemCollapsibleState.None;
       case "folder-node":
         const node = data as FolderChunkNode;
         if (node && !node.isFile && node.children.size > 0) {
@@ -432,6 +483,10 @@ export class TopicTreeItem extends vscode.TreeItem {
         return `Max Iterations: ${value}`;
       case "confidence-threshold":
         return `Confidence: ${(value * 100).toFixed(0)}%`;
+      case "chunk-size":
+        return `📏 Chunk Size: ${value}`;
+      case "chunk-overlap":
+        return `🔗 Chunk Overlap: ${value}`;
       default:
         return `${key}: ${value}`;
     }
@@ -445,6 +500,8 @@ export class TopicTreeItem extends vscode.TreeItem {
       case "chunk-count":
         return `📦 Chunks: ${value}`;
       case "embedding-model":
+        return `🤖 Model: ${value}`;
+      case "stat-embedding-model":
         return `🤖 Model: ${value}`;
       case "last-updated":
         return `🕒 Updated: ${value}`;
@@ -484,6 +541,14 @@ export class TopicTreeItem extends vscode.TreeItem {
         this.description = `${doc.chunkCount} chunks`;
         this.contextValue = "document";
         this.iconPath = new vscode.ThemeIcon("file");
+        // Make document clickable to open the source file
+        if (doc.filePath) {
+          this.command = {
+            command: "vscode.open",
+            title: "Open File",
+            arguments: [vscode.Uri.file(doc.filePath)],
+          };
+        }
         break;
 
       case "config-status":
@@ -546,6 +611,16 @@ export class TopicTreeItem extends vscode.TreeItem {
         this.tooltip = `${data.key}: ${data.value}`;
         this.contextValue = "stat-item";
         this.iconPath = new vscode.ThemeIcon("symbol-numeric");
+        
+        // Make embedding model clickable for reindex
+        if (data && data.key === 'stat-embedding-model') {
+          this.command = {
+            command: COMMANDS.REINDEX_WITH_MODEL,
+            title: 'Reindex with Different Model',
+            arguments: [data.topicId],
+          };
+          this.tooltip = `Double-click to reindex topic with a different embedding model`;
+        }
         break;
 
       case "progress":
@@ -560,9 +635,24 @@ export class TopicTreeItem extends vscode.TreeItem {
         };
         break;
 
+      case "active-file":
+        const activeFile = data as ActiveFileInfo;
+        this.tooltip = `Processing: ${activeFile.absolutePath}\nStage: ${activeFile.stage}`;
+        this.description = activeFile.stage;
+        this.contextValue = "active-file";
+        this.iconPath = new vscode.ThemeIcon("loading~spin");
+        break;
+
       case "folder-stats-root":
         this.tooltip = "Click to expand folder breakdown by chunks";
         this.contextValue = "folder-stats-root";
+        this.iconPath = new vscode.ThemeIcon("folder-library");
+        break;
+
+      case "watch-folder-root":
+        const watchRoot = data as FolderChunkNode;
+        this.tooltip = watchRoot.path;
+        this.contextValue = "watch-folder-root";
         this.iconPath = new vscode.ThemeIcon("folder-library");
         break;
 
@@ -571,6 +661,14 @@ export class TopicTreeItem extends vscode.TreeItem {
         this.tooltip = folderNode.path;
         this.contextValue = folderNode.isFile ? "folder-file" : "folder-folder";
         this.iconPath = new vscode.ThemeIcon(folderNode.isFile ? "file" : "folder");
+        // Make file nodes clickable to open the source file
+        if (folderNode.isFile) {
+          this.command = {
+            command: "vscode.open",
+            title: "Open File",
+            arguments: [vscode.Uri.file(folderNode.path)],
+          };
+        }
         break;
     }
   }

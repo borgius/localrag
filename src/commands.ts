@@ -89,6 +89,10 @@ export class CommandHandler {
       // Watch control commands
       vscode.commands.registerCommand(COMMANDS.TOGGLE_WATCH, () =>
         handler.toggleWatch()
+      ),
+      // Reindex with model command
+      vscode.commands.registerCommand(COMMANDS.REINDEX_WITH_MODEL, (topicId?: string) =>
+        handler.reindexWithModel(topicId)
       )
     );
   }
@@ -137,6 +141,130 @@ export class CommandHandler {
     const status = fileWatcher.isWatchingEnabled() ? "enabled" : "paused";
     vscode.window.showInformationMessage(`Folder watching ${status}`);
     this.treeDataProvider.refresh();
+  }
+
+  /**
+   * Reindex topic with a different embedding model
+   */
+  public async reindexWithModel(topicId?: string): Promise<void> {
+    try {
+      // Get topic to reindex
+      let topic;
+      if (topicId) {
+        topic = this.topicManager.getTopic(topicId);
+      } else {
+        // Show topic picker
+        const topics = await this.topicManager.getAllTopics();
+        if (topics.length === 0) {
+          vscode.window.showInformationMessage("No topics available to reindex.");
+          return;
+        }
+
+        const selected = await vscode.window.showQuickPick(
+          topics.map((t: any) => ({
+            label: t.name,
+            description: `${t.documentCount} document(s)`,
+            topic: t,
+          })),
+          {
+            placeHolder: "Select a topic to reindex",
+          }
+        );
+
+        if (!selected) {
+          return;
+        }
+
+        topic = selected.topic;
+      }
+
+      if (!topic) {
+        vscode.window.showErrorMessage("Topic not found");
+        return;
+      }
+
+      // Get available models (exclude current model)
+      const currentModel = this.embeddingService.getCurrentModel();
+      const availableModels = await this.embeddingService.listAvailableModels();
+      
+      const modelOptions = availableModels
+        .filter(m => m.name !== currentModel) // Exclude current model
+        .map(m => ({
+          label: m.name,
+          description: m.source === "curated" && !m.downloaded 
+            ? "📥 Will be downloaded" 
+            : m.source === "local" ? "Local model" : "Downloaded",
+          model: m,
+        }));
+
+      if (modelOptions.length === 0) {
+        vscode.window.showInformationMessage("No other embedding models available.");
+        return;
+      }
+
+      const selectedModel = await vscode.window.showQuickPick(modelOptions, {
+        placeHolder: `Select embedding model to reindex "${topic.name}" (current: ${currentModel})`,
+      });
+
+      if (!selectedModel) {
+        return;
+      }
+
+      // Confirm reindex
+      const confirmation = await vscode.window.showWarningMessage(
+        `This will reindex all documents in "${topic.name}" with the "${selectedModel.label}" model. This may take some time. Continue?`,
+        { modal: true },
+        "Reindex"
+      );
+
+      if (confirmation !== "Reindex") {
+        return;
+      }
+
+      // Perform reindexing with progress
+      await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: `Reindexing "${topic.name}" with "${selectedModel.label}"...`,
+          cancellable: false,
+        },
+        async (progress) => {
+          // Step 1: Get all document file paths before deletion
+          progress.report({ message: "Collecting documents..." });
+          const documents = this.topicManager.getTopicDocuments(topic.id);
+          const filePaths = documents.map(doc => doc.filePath).filter(Boolean) as string[];
+          
+          if (filePaths.length === 0) {
+            vscode.window.showWarningMessage(
+              `No documents found in "${topic.name}" to reindex.`
+            );
+            return;
+          }
+
+          // Step 2: Delete the current vector store for this topic
+          progress.report({ message: "Removing old index..." });
+          await this.topicManager.deleteTopicVectorStore(topic.id);
+          
+          // Step 3: Set the new model and reinitialize
+          progress.report({ message: "Loading new model..." });
+          await this.embeddingService.initialize(selectedModel.model.name);
+          await this.topicManager.reinitializeWithNewModel();
+          
+          // Step 4: Re-add all documents with the new model
+          progress.report({ message: `Re-indexing ${filePaths.length} document(s)...` });
+          await this.topicManager.addDocuments(topic.id, filePaths);
+          
+          this.treeDataProvider.refresh();
+        }
+      );
+
+      vscode.window.showInformationMessage(
+        `Successfully reindexed "${topic.name}" with "${selectedModel.label}" model.`
+      );
+    } catch (err) {
+      logger.error('Failed to reindex with model', err);
+      vscode.window.showErrorMessage(`Failed to reindex: ${err}`);
+    }
   }
 
   /**

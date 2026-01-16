@@ -328,10 +328,26 @@ export class FileWatcherService {
         processedCount = 0;
         let successCount = 0;
 
+        // Get workspace root for relative paths
+        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || "";
+
         // Process files one at a time so we can pause between them
         for (const filePath of existingFiles) {
           // Check for pause at each file
           await this.progressTracker.waitIfPaused(this.defaultTopicId!);
+
+          // Calculate relative path for display
+          const relativePath = workspaceRoot && filePath.startsWith(workspaceRoot) 
+            ? path.relative(workspaceRoot, filePath)
+            : path.basename(filePath);
+
+          // Start tracking this active file
+          this.progressTracker.startFileProcessing(
+            this.defaultTopicId!,
+            filePath,
+            relativePath,
+            "loading"
+          );
 
           try {
             const results = await this.topicManager.addDocuments(
@@ -339,6 +355,12 @@ export class FileWatcherService {
               [filePath],
               {
                 onProgress: (pipelineProgress) => {
+                  // Update active file stage
+                  this.progressTracker.updateFileProcessing(this.defaultTopicId!, filePath, {
+                    stage: pipelineProgress.stage as "loading" | "chunking" | "embedding" | "storing",
+                    chunkCount: pipelineProgress.details?.chunksCreated,
+                  });
+                  
                   this.progressTracker.updateProgress(this.defaultTopicId!, {
                     stage: pipelineProgress.stage,
                     currentFile: pipelineProgress.details?.fileName || path.basename(filePath),
@@ -358,6 +380,9 @@ export class FileWatcherService {
               error: error instanceof Error ? error.message : String(error),
             });
           }
+
+          // Complete this file's tracking
+          this.progressTracker.completeFileProcessing(this.defaultTopicId!, filePath);
 
           processedCount++;
         }

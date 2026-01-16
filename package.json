@@ -28,6 +28,12 @@
     "configuration": {
       "title": "LocalRAG",
       "properties": {
+        "localrag.defaultEmbeddingModel": {
+          "type": "string",
+          "default": "Xenova/all-MiniLM-L6-v2",
+          "markdownDescription": "**Default embedding model**: The embedding model to use when initializing the extension. You can specify a curated model name (e.g., `Xenova/all-MiniLM-L6-v2`) or a local model path. Click on models in the tree view to switch models at runtime.",
+          "order": 1
+        },
         "localrag.localModelPath": {
           "type": "string",
           "default": "",
@@ -297,6 +303,12 @@
         "title": "Toggle Folder Watching",
         "category": "LocalRAG",
         "icon": "$(eye)"
+      },
+      {
+        "command": "localrag.reindexWithModel",
+        "title": "Reindex Topic with Different Model",
+        "category": "LocalRAG",
+        "icon": "$(sync)"
       }
     ],
     "viewsContainers": {

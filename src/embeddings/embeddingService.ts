@@ -405,11 +405,16 @@ export class EmbeddingService {
     // Priority:
     // 1. Explicit parameter (for programmatic control, tests)
     // 2. Currently loaded model (avoid unnecessary reloads)
-    // 3. Default model (fallback)
+    // 3. Configured default model from settings
+    // 4. Built-in default model (fallback)
+    const config = vscode.workspace.getConfiguration(CONFIG.ROOT);
+    const configuredDefault = config.get<string>(CONFIG.DEFAULT_EMBEDDING_MODEL, '') || '';
+    const effectiveDefault = configuredDefault.trim() || EmbeddingService.DEFAULT_MODEL;
+    
     const targetModel =
       modelName ??
       (this.pipeline ? this.currentModel : null) ??
-      EmbeddingService.DEFAULT_MODEL;
+      effectiveDefault;
 
     try {
       await this.initializeModel(targetModel);

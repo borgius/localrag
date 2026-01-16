@@ -7,6 +7,19 @@
 import { EventEmitter } from "events";
 import { Logger } from "./logger";
 
+export interface ActiveFileInfo {
+  /** Relative path to the file */
+  relativePath: string;
+  /** Absolute path to the file */
+  absolutePath: string;
+  /** Current processing stage */
+  stage: "loading" | "chunking" | "embedding" | "storing";
+  /** Number of chunks generated (available after chunking) */
+  chunkCount?: number;
+  /** Start time of processing */
+  startTime: number;
+}
+
 export interface IndexingProgress {
   topicId: string;
   topicName: string;
@@ -16,6 +29,8 @@ export interface IndexingProgress {
   stage: "removing" | "loading" | "chunking" | "embedding" | "storing" | "complete";
   percentage: number;
   startTime: number;
+  /** Currently active files being processed (for parallel processing) */
+  activeFiles?: Map<string, ActiveFileInfo>;
 }
 
 /**
@@ -73,6 +88,7 @@ export class ProgressTracker {
       stage: "loading",
       percentage: 0,
       startTime: Date.now(),
+      activeFiles: new Map(),
     };
 
     this.activeOperations.set(topicId, progress);
@@ -125,6 +141,7 @@ export class ProgressTracker {
     progress.stage = "complete";
     progress.percentage = 100;
     progress.processedFiles = progress.totalFiles;
+    progress.activeFiles?.clear();
 
     this.logger.info("Progress tracking complete", {
       topicId,
@@ -168,6 +185,78 @@ export class ProgressTracker {
    */
   public hasActiveIndexing(topicId: string): boolean {
     return this.activeOperations.has(topicId);
+  }
+
+  /**
+   * Start tracking an active file being processed
+   */
+  public startFileProcessing(
+    topicId: string,
+    absolutePath: string,
+    relativePath: string,
+    stage: ActiveFileInfo["stage"] = "loading"
+  ): void {
+    const progress = this.activeOperations.get(topicId);
+    if (!progress) {
+      return;
+    }
+
+    if (!progress.activeFiles) {
+      progress.activeFiles = new Map();
+    }
+
+    progress.activeFiles.set(absolutePath, {
+      absolutePath,
+      relativePath,
+      stage,
+      startTime: Date.now(),
+    });
+
+    this.emit("progress", topicId, progress);
+  }
+
+  /**
+   * Update an active file's processing stage and chunk count
+   */
+  public updateFileProcessing(
+    topicId: string,
+    absolutePath: string,
+    updates: Partial<Pick<ActiveFileInfo, "stage" | "chunkCount">>
+  ): void {
+    const progress = this.activeOperations.get(topicId);
+    if (!progress?.activeFiles) {
+      return;
+    }
+
+    const fileInfo = progress.activeFiles.get(absolutePath);
+    if (fileInfo) {
+      Object.assign(fileInfo, updates);
+      this.emit("progress", topicId, progress);
+    }
+  }
+
+  /**
+   * Complete file processing and remove from active files
+   */
+  public completeFileProcessing(topicId: string, absolutePath: string): void {
+    const progress = this.activeOperations.get(topicId);
+    if (!progress?.activeFiles) {
+      return;
+    }
+
+    progress.activeFiles.delete(absolutePath);
+    this.emit("progress", topicId, progress);
+  }
+
+  /**
+   * Get list of currently active files for a topic
+   */
+  public getActiveFiles(topicId: string): ActiveFileInfo[] {
+    const progress = this.activeOperations.get(topicId);
+    if (!progress?.activeFiles) {
+      return [];
+    }
+    return Array.from(progress.activeFiles.values());
   }
 
   /**

@@ -20,6 +20,7 @@ export const EXTENSION = {
 export const CONFIG = {
   ROOT: "localrag",
   // Basic configuration
+  DEFAULT_EMBEDDING_MODEL: "defaultEmbeddingModel",
   LOCAL_MODEL_PATH: "localModelPath",
   EMBEDDING_DB_PATH: "embeddingDbPath",
   TOP_K: "topK",
@@ -64,6 +65,7 @@ export const COMMANDS = {
   SET_EMBEDDING_MODEL: "localrag.setEmbeddingModel",
   TOGGLE_INDEXING_PAUSE: "localrag.toggleIndexingPause",
   TOGGLE_WATCH: "localrag.toggleWatch",
+  REINDEX_WITH_MODEL: "localrag.reindexWithModel",
   // GitHub token management
   ADD_GITHUB_TOKEN: "localrag.addGithubToken",
   LIST_GITHUB_TOKENS: "localrag.listGithubTokens",
