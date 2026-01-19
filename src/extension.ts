@@ -88,6 +88,7 @@ export async function activate(context: vscode.ExtensionContext) {
       showCollapseAll: true,
     });
     context.subscriptions.push(treeView);
+    context.subscriptions.push(treeDataProvider); // Dispose model change subscription
     logger.actionComplete("Tree view registered", { viewId: VIEWS.RAG_TOPICS });
 
     // Register commands
@@ -320,6 +321,14 @@ export async function activate(context: vscode.ExtensionContext) {
             });
             logger.actionFailed("File watcher configuration update", error);
           }
+        }
+
+        // Handle Common Database Path change
+        if (event.affectsConfiguration(`${CONFIG.ROOT}.${CONFIG.COMMON_DATABASE_PATH}`)) {
+          logger.info("Common database path configuration changed");
+          await topicManager.loadCommonDatabase();
+          treeDataProvider.refresh();
+          vscode.window.showInformationMessage("Common database reloaded");
         }
 
         const affectsTreeViewConfig = treeViewConfigPaths.some((configPath) =>

@@ -40,6 +40,8 @@ export const CONFIG = {
   WATCH_FOLDER: "watchFolder",
   WATCH_FOLDERS: "watchFolders",
   WATCH_ON_CHANGES: "watchOnChanges",
+  // Common database configuration
+  COMMON_DATABASE_PATH: "commonDatabasePath",
 } as const;
 
 /**
@@ -70,6 +72,10 @@ export const COMMANDS = {
   ADD_GITHUB_TOKEN: "localrag.addGithubToken",
   LIST_GITHUB_TOKENS: "localrag.listGithubTokens",
   REMOVE_GITHUB_TOKEN: "localrag.removeGithubToken",
+  // Import/Export
+  EXPORT_TOPIC: "localrag.exportTopic",
+  IMPORT_TOPIC: "localrag.importTopic",
+  RENAME_TOPIC: "localrag.renameTopic",
 } as const;
 
 /**

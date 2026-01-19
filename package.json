@@ -248,6 +248,12 @@
           "default": false,
           "markdownDescription": "**Enable automatic watching**: When enabled, the extension will automatically watch configured folders for changes and update the default topic. You can toggle this setting using the pause/resume button in the topic tree view.",
           "order": 20
+        },
+        "localrag.commonDatabasePath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "**Path to a shared/common RAG database folder.** Topics from this path are read-only and cannot be deleted or modified. Useful for team-shared knowledge bases.\n\n**Format:** Absolute path to a folder containing exported RAG database files.",
+          "order": 21
         }
       }
     },
@@ -326,6 +332,24 @@
         "title": "Reindex Topic with Different Model",
         "category": "LocalRAG",
         "icon": "$(sync)"
+      },
+      {
+        "command": "localrag.exportTopic",
+        "title": "Export Topic",
+        "category": "LocalRAG",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "localrag.importTopic",
+        "title": "Import Topic",
+        "category": "LocalRAG",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "localrag.renameTopic",
+        "title": "Rename Topic",
+        "category": "LocalRAG",
+        "icon": "$(edit)"
       }
     ],
     "viewsContainers": {
@@ -365,9 +389,14 @@
           "group": "navigation@2"
         },
         {
-          "command": "localrag.toggleIndexingPause",
+          "command": "localrag.importTopic",
           "when": "view == ragTopics",
           "group": "navigation@3"
+        },
+        {
+          "command": "localrag.toggleIndexingPause",
+          "when": "view == ragTopics",
+          "group": "navigation@4"
         }
       ],
       "view/item/context": [
@@ -382,14 +411,19 @@
           "group": "inline@2"
         },
         {
-          "command": "localrag.toggleIndexingPause",
+          "command": "localrag.exportTopic",
           "when": "view == ragTopics && viewItem == topic",
           "group": "inline@3"
         },
         {
-          "command": "localrag.deleteTopic",
+          "command": "localrag.renameTopic",
           "when": "view == ragTopics && viewItem == topic",
           "group": "inline@4"
+        },
+        {
+          "command": "localrag.deleteTopic",
+          "when": "view == ragTopics && viewItem == topic",
+          "group": "inline@5"
         }
       ]
     },
@@ -480,6 +514,8 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
+    "@types/adm-zip": "^0.5.7",
+    "@types/archiver": "^7.0.0",
     "@types/chai": "^5.2.3",
     "@types/cheerio": "^0.22.35",
     "@types/glob": "^7.2.0",
@@ -506,6 +542,8 @@
     "@langchain/community": "^1.0.0",
     "@langchain/core": "^1.0.0",
     "@langchain/textsplitters": "^1.0.0",
+    "adm-zip": "^0.5.16",
+    "archiver": "^7.0.1",
     "async-mutex": "^0.5.0",
     "cheerio": "^1.1.2",
     "ignore": "^5.3.2",
