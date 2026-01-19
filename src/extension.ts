@@ -207,7 +207,6 @@ export async function activate(context: vscode.ExtensionContext) {
         const localModelPathSetting = `${CONFIG.ROOT}.${CONFIG.LOCAL_MODEL_PATH}`;
         const watchFolderSettings = [
           `${CONFIG.ROOT}.${CONFIG.WATCH_FOLDERS}`,
-          `${CONFIG.ROOT}.${CONFIG.WATCH_FOLDER}`,
           `${CONFIG.ROOT}.${CONFIG.WATCH_ON_CHANGES}`,
           `${CONFIG.ROOT}.includeExtensions`,
         ];

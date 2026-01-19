@@ -37,7 +37,6 @@ export const CONFIG = {
   AGENTIC_LLM_MODEL: "agenticLLMModel",
   AGENTIC_INCLUDE_WORKSPACE: "agenticIncludeWorkspaceContext",
   // Folder watching configuration
-  WATCH_FOLDER: "watchFolder",
   WATCH_FOLDERS: "watchFolders",
   WATCH_ON_CHANGES: "watchOnChanges",
   // Common database configuration

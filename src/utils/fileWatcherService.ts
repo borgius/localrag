@@ -42,13 +42,11 @@ export class FileWatcherService {
 
     const config = vscode.workspace.getConfiguration(CONFIG.ROOT);
     const configuredFolders = config.get<string[]>(CONFIG.WATCH_FOLDERS, []);
-    const legacyFolder = config.get<string>(CONFIG.WATCH_FOLDER, "");
     this.watchOnChanges = config.get<boolean>(CONFIG.WATCH_ON_CHANGES, false);
     this.isRecursive = true;
     
     this.logger.debug("Watch configuration", {
       configuredFolders,
-      legacyFolder,
       watchOnChanges: this.watchOnChanges
     });
     
@@ -61,7 +59,7 @@ export class FileWatcherService {
     }
     this.includeExtensions = this.includeExtensions.map((ext) => ext.toLowerCase());
 
-    this.watchFolders = this.normalizeWatchFolders(configuredFolders, legacyFolder);
+    this.watchFolders = this.normalizeWatchFolders(configuredFolders);
 
     if (this.watchFolders.length === 0) {
       this.logger.info("No watch folders configured, skipping file watcher setup");
@@ -197,13 +195,8 @@ export class FileWatcherService {
   /**
    * Normalize and resolve watch folders
    */
-  private normalizeWatchFolders(configuredFolders: string[], legacyFolder: string): string[] {
-    const rawFolders = [...configuredFolders];
-    if (legacyFolder && legacyFolder.trim().length > 0) {
-      rawFolders.push(legacyFolder);
-    }
-
-    const resolved = rawFolders
+  private normalizeWatchFolders(configuredFolders: string[]): string[] {
+    const resolved = configuredFolders
       .map((folder) => folder.trim())
       .filter((folder) => folder.length > 0)
       .map((folder) => this.resolveFolderPath(folder))
@@ -215,7 +208,7 @@ export class FileWatcherService {
 
   /**
    * Resolve workspace-relative folder paths
-   * Only allows paths within workspace folders, but NOT the workspace root itself
+   * Only allows paths within workspace folders (including workspace root with "." or "./")
    */
   private resolveFolderPath(folder: string): string {
     const workspaceFolders = vscode.workspace.workspaceFolders;
@@ -224,24 +217,12 @@ export class FileWatcherService {
       return "";
     }
 
-    // Reject "." which would resolve to workspace root
-    if (folder === "." || folder === "./") {
-      this.logger.debug("Watch folder '.' (workspace root) is not allowed, skipping", { folder });
-      return "";
-    }
-
     const workspaceRoot = workspaceFolders[0].uri.fsPath;
 
-    // If it's an absolute path, ensure it's within a workspace folder but not the root itself
+    // If it's an absolute path, ensure it's within a workspace folder
     if (path.isAbsolute(folder)) {
-      // Reject if it's the workspace root itself
-      if (workspaceFolders.some(wsFolder => folder === wsFolder.uri.fsPath)) {
-        this.logger.debug("Watch folder cannot be the workspace root itself, skipping", { folder });
-        return "";
-      }
-      
       const isInWorkspace = workspaceFolders.some(wsFolder => 
-        folder.startsWith(wsFolder.uri.fsPath)
+        folder === wsFolder.uri.fsPath || folder.startsWith(wsFolder.uri.fsPath + path.sep)
       );
       if (isInWorkspace) {
         return folder;
@@ -254,15 +235,9 @@ export class FileWatcherService {
     // Resolve relative paths within the first workspace folder
     const resolved = path.resolve(workspaceRoot, folder);
     
-    // Reject if resolved path is the workspace root itself
-    if (workspaceFolders.some(wsFolder => resolved === wsFolder.uri.fsPath)) {
-      this.logger.debug("Watch folder cannot resolve to workspace root, skipping", { folder, resolved });
-      return "";
-    }
-    
-    // Verify the resolved path is still within workspace
+    // Verify the resolved path is within workspace (or is the workspace root)
     const isInWorkspace = workspaceFolders.some(wsFolder => 
-      resolved.startsWith(wsFolder.uri.fsPath)
+      resolved === wsFolder.uri.fsPath || resolved.startsWith(wsFolder.uri.fsPath + path.sep)
     );
     
     if (!isInWorkspace) {
@@ -656,7 +631,6 @@ export class FileWatcherService {
 
     const config = vscode.workspace.getConfiguration(CONFIG.ROOT);
     const configuredFolders = config.get<string[]>(CONFIG.WATCH_FOLDERS, []);
-    const legacyFolder = config.get<string>(CONFIG.WATCH_FOLDER, "");
     const newWatchOnChanges = config.get<boolean>(CONFIG.WATCH_ON_CHANGES, false);
     let newExtensions = config.get<string[]>("includeExtensions", DEFAULTS.INCLUDE_EXTENSIONS);
     if (newExtensions.length === 0) {
@@ -664,7 +638,7 @@ export class FileWatcherService {
     }
     newExtensions = newExtensions.map((ext) => ext.toLowerCase());
 
-    const newWatchFolders = this.normalizeWatchFolders(configuredFolders, legacyFolder);
+    const newWatchFolders = this.normalizeWatchFolders(configuredFolders);
 
     // Check if configuration changed
     const configChanged =

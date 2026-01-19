@@ -886,37 +886,24 @@ export class TopicManager {
   private getWatchFolderForPath(filePath: string): { watchFolder: string; displayName: string } | null {
     const config = vscode.workspace.getConfiguration(CONFIG.ROOT);
     const watchFolders = config.get<string[]>(CONFIG.WATCH_FOLDERS, []);
-    const legacyWatchFolder = config.get<string>(CONFIG.WATCH_FOLDER, "");
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || "";
-    
-    // Combine all configured folders
-    const allFolders = [...watchFolders];
-    if (legacyWatchFolder && legacyWatchFolder.trim().length > 0) {
-      allFolders.push(legacyWatchFolder);
-    }
     
     const normalizedFilePath = path.normalize(filePath);
     
-    for (const folder of allFolders) {
+    for (const folder of watchFolders) {
       const trimmedFolder = folder.trim();
       if (trimmedFolder.length === 0) continue;
-      
-      // Skip "." which would resolve to workspace root
-      if (trimmedFolder === "." || trimmedFolder === "./") continue;
       
       // Resolve relative paths to absolute
       const resolvedFolder = path.isAbsolute(trimmedFolder)
         ? trimmedFolder
         : path.resolve(workspaceRoot, trimmedFolder);
       
-      // Skip if resolved path is the workspace root itself
-      if (resolvedFolder === workspaceRoot) continue;
-      
       const normalizedWatchFolder = path.normalize(resolvedFolder);
       
       if (normalizedFilePath.startsWith(normalizedWatchFolder + path.sep) || normalizedFilePath === normalizedWatchFolder) {
-        // Use the folder's basename as the display name
-        const displayName = path.basename(normalizedWatchFolder);
+        // Use the folder's basename as the display name, or "workspace" for root
+        const displayName = resolvedFolder === workspaceRoot ? "workspace" : path.basename(normalizedWatchFolder);
         return { watchFolder: normalizedWatchFolder, displayName };
       }
     }
