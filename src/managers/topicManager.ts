@@ -72,6 +72,9 @@ export class TopicManager {
   // Cache for topic documents
   private topicDocuments: Map<string, Map<string, TopicDocument>> = new Map();
 
+  // Track which topics have documents that need saving (for stat migration)
+  private documentsNeedSave: Set<string> = new Set();
+
   // Cache for folder chunk statistics per topic
   private folderChunkStats: Map<string, FolderChunkStats> = new Map();
 
@@ -500,6 +503,179 @@ export class TopicManager {
   }
 
   /**
+   * Get document by file path for a specific topic
+   */
+  public getDocumentByFilePath(topicId: string, filePath: string): TopicDocument | null {
+    const documents = this.topicDocuments.get(topicId);
+    if (!documents) {
+      return null;
+    }
+    
+    for (const doc of documents.values()) {
+      if (doc.filePath === filePath) {
+        return doc;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Check if a file needs to be reindexed using Git-like stat comparison
+   * Returns true if:
+   * - File is not in the index, OR
+   * - File size changed, OR
+   * - File modification time changed (with 1ms tolerance for floating point)
+   * 
+   * This is optimized to use a single stat() call like Git does
+   * 
+   * MIGRATION: If a document exists but has no stats (indexed before this feature),
+   * we capture the current stats and assume the file is unchanged.
+   */
+  public async isFileModified(topicId: string, filePath: string): Promise<boolean> {
+    try {
+      const existingDoc = this.getDocumentByFilePath(topicId, filePath);
+      
+      // File not indexed yet - needs indexing
+      if (!existingDoc) {
+        this.logger.debug("File not in index, needs indexing", { filePath: path.basename(filePath) });
+        return true;
+      }
+
+      // Get current file stats (single syscall)
+      const stats = await fs.stat(filePath);
+      const currentMtime = Math.floor(stats.mtimeMs);
+      const currentSize = stats.size;
+
+      // MIGRATION: No stat info stored - capture current stats WITHOUT reindexing
+      // This handles documents indexed before we added stat tracking
+      if (existingDoc.fileModifiedAt === undefined || existingDoc.fileSize === undefined) {
+        this.logger.debug("Migrating document: capturing stats for existing indexed file", { 
+          filePath: path.basename(filePath),
+          size: currentSize,
+          mtime: currentMtime,
+        });
+        
+        // Update the document with current stats (assume unchanged since it's already indexed)
+        existingDoc.fileModifiedAt = currentMtime;
+        existingDoc.fileSize = currentSize;
+        
+        // Mark that we need to save the updated documents
+        this.markDocumentsNeedSave(topicId);
+        
+        return false; // Don't reindex - just captured the stats
+      }
+      
+      // Git-like comparison: check size first (fastest), then mtime
+      // Size change is a definite modification
+      if (currentSize !== existingDoc.fileSize) {
+        this.logger.debug("File size changed", {
+          file: path.basename(filePath),
+          storedSize: existingDoc.fileSize,
+          currentSize,
+        });
+        return true;
+      }
+
+      // Compare mtime with small tolerance for floating point precision
+      const storedMtime = Math.floor(existingDoc.fileModifiedAt);
+      
+      if (currentMtime !== storedMtime) {
+        this.logger.debug("File mtime changed", {
+          file: path.basename(filePath),
+          storedMtime,
+          currentMtime,
+        });
+        return true;
+      }
+
+      // File unchanged
+      return false;
+    } catch (error) {
+      // If we can't check the file, assume it needs reindexing
+      this.logger.warn("Failed to check file modification", {
+        error: error instanceof Error ? error.message : String(error),
+        filePath: path.basename(filePath),
+      });
+      return true;
+    }
+  }
+
+  /**
+   * Mark that a topic's documents need to be saved (for stat migration)
+   */
+  private markDocumentsNeedSave(topicId: string): void {
+    this.documentsNeedSave.add(topicId);
+  }
+
+  /**
+   * Save any pending document metadata changes (called after change detection)
+   */
+  public async savePendingDocumentChanges(): Promise<void> {
+    if (this.documentsNeedSave.size === 0) {
+      return;
+    }
+
+    this.logger.info("Saving migrated document stats", {
+      topicCount: this.documentsNeedSave.size,
+    });
+
+    for (const topicId of this.documentsNeedSave) {
+      try {
+        await this.saveTopicDocuments(topicId);
+      } catch (error) {
+        this.logger.error("Failed to save migrated document stats", {
+          topicId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    this.documentsNeedSave.clear();
+  }
+
+  /**
+   * Filter a list of files to only those that need reindexing
+   * Uses Git-like stat comparison (size + mtime) for fast change detection
+   * Returns files that are either new or modified since last index
+   */
+  public async filterModifiedFiles(topicId: string, filePaths: string[]): Promise<string[]> {
+    const startTime = Date.now();
+    const modifiedFiles: string[] = [];
+    
+    // Get all indexed documents for this topic to avoid repeated map lookups
+    const indexedDocs = this.topicDocuments.get(topicId);
+    const indexedCount = indexedDocs?.size || 0;
+    
+    this.logger.debug("Starting change detection", {
+      topicId,
+      filesToCheck: filePaths.length,
+      indexedDocuments: indexedCount,
+    });
+    
+    for (const filePath of filePaths) {
+      const needsReindex = await this.isFileModified(topicId, filePath);
+      if (needsReindex) {
+        modifiedFiles.push(filePath);
+      }
+    }
+
+    // Save any documents that were migrated (stats captured)
+    await this.savePendingDocumentChanges();
+
+    const elapsedMs = Date.now() - startTime;
+    const skippedCount = filePaths.length - modifiedFiles.length;
+    
+    this.logger.info("Change detection complete", {
+      total: filePaths.length,
+      unchanged: skippedCount,
+      needsReindex: modifiedFiles.length,
+      elapsedMs,
+    });
+
+    return modifiedFiles;
+  }
+
+  /**
    * Remove a document from a topic by file path
    * This is used when a file is modified to remove old chunks before adding new ones
    */
@@ -706,6 +882,17 @@ export class TopicManager {
           const fileName = path.basename(filePath);
           const fileExt = path.extname(filePath).substring(1);
 
+          // Get file stats for Git-like change detection (size + mtime)
+          let fileModifiedAt: number | undefined;
+          let fileSize: number | undefined;
+          try {
+            const stats = await fs.stat(filePath);
+            fileModifiedAt = Math.floor(stats.mtimeMs); // Floor to avoid floating point issues
+            fileSize = stats.size;
+          } catch (error) {
+            this.logger.warn("Could not get file stats", { filePath });
+          }
+
           const document: TopicDocument = {
             id: this.generateDocumentId(),
             topicId,
@@ -714,6 +901,8 @@ export class TopicManager {
             fileType: this.mapFileType(fileExt),
             addedAt: Date.now(),
             chunkCount: pipelineResult.metadata.chunksStored,
+            fileModifiedAt,
+            fileSize,
           };
 
           // Store document metadata

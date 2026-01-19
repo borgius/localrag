@@ -268,13 +268,33 @@ export class FileWatcherService {
       }
     }
 
-    const existingFiles = Array.from(filesToProcess);
-    if (existingFiles.length === 0) {
+    const allFiles = Array.from(filesToProcess);
+    if (allFiles.length === 0) {
       this.logger.info("No existing files found in watch folders to seed");
       return;
     }
 
-    this.logger.info("Seeding default topic with existing files", {
+    this.logger.info("Checking watched files for changes (Git-like stat comparison)...", {
+      fileCount: allFiles.length,
+      folders: this.watchFolders,
+    });
+
+    // Filter to only files that need reindexing (new or modified)
+    // Uses Git-like stat comparison: size + mtime
+    await this.topicManager.ensureInitialized();
+    const existingFiles = await this.topicManager.filterModifiedFiles(this.defaultTopicId, allFiles);
+    
+    const skippedCount = allFiles.length - existingFiles.length;
+    if (skippedCount > 0) {
+      this.logger.info(`Skipped ${skippedCount} unchanged files (already indexed)`);
+    }
+
+    if (existingFiles.length === 0) {
+      this.logger.info("All watched files are up to date, nothing to index");
+      return;
+    }
+
+    this.logger.info("Indexing new/modified files", {
       count: existingFiles.length,
       folders: this.watchFolders
     });
@@ -482,19 +502,28 @@ export class FileWatcherService {
 
     try {
       // Filter to only existing files (new or modified)
-      const existingFiles: string[] = [];
+      const accessibleFiles: string[] = [];
       for (const filePath of changedFiles) {
         try {
           await fs.access(filePath);
-          existingFiles.push(filePath);
+          accessibleFiles.push(filePath);
         } catch {
           // File was deleted or doesn't exist, skip it
           this.logger.debug("Skipping deleted or inaccessible file", { path: filePath });
         }
       }
 
-      if (existingFiles.length === 0) {
+      if (accessibleFiles.length === 0) {
         this.logger.info("No files to add after filtering");
+        return;
+      }
+
+      // Filter to only files that actually changed (mtime comparison)
+      await this.topicManager.ensureInitialized();
+      const existingFiles = await this.topicManager.filterModifiedFiles(this.defaultTopicId!, accessibleFiles);
+
+      if (existingFiles.length === 0) {
+        this.logger.info("All changed files are already up to date in index");
         return;
       }
 

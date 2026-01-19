@@ -4,6 +4,9 @@
  */
 
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 import { CONFIG } from './constants';
 
 export enum LogLevel {
@@ -18,6 +21,8 @@ export class Logger {
   private static outputChannel: vscode.OutputChannel | null = null;
   private static logLevel: LogLevel = LogLevel.INFO;
   private static isInitialized: boolean = false;
+  private static fileLogPath: string | null = null;
+  private static fileLogStream: fs.WriteStream | null = null;
 
   /**
    * Initialize the logger early in extension lifecycle
@@ -29,7 +34,35 @@ export class Logger {
       Logger.outputChannel.appendLine('[STARTUP] LocalRAG extension starting...');
       Logger.outputChannel.appendLine(`[STARTUP] Timestamp: ${new Date().toISOString()}`);
       Logger.isInitialized = true;
+      
+      // Initialize file logging
+      Logger.initializeFileLogging();
     }
+  }
+
+  /**
+   * Initialize file logging to tmp directory
+   */
+  private static initializeFileLogging(): void {
+    try {
+      const tmpDir = os.tmpdir();
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      Logger.fileLogPath = path.join(tmpDir, `localrag-${timestamp}.log`);
+      Logger.fileLogStream = fs.createWriteStream(Logger.fileLogPath, { flags: 'a' });
+      
+      Logger.outputChannel?.appendLine(`[STARTUP] Log file: ${Logger.fileLogPath}`);
+      Logger.fileLogStream.write(`[STARTUP] LocalRAG extension starting...\n`);
+      Logger.fileLogStream.write(`[STARTUP] Timestamp: ${new Date().toISOString()}\n`);
+    } catch (error) {
+      Logger.outputChannel?.appendLine(`[STARTUP] Failed to initialize file logging: ${error}`);
+    }
+  }
+
+  /**
+   * Get the current log file path
+   */
+  public static getLogFilePath(): string | null {
+    return Logger.fileLogPath;
   }
 
   /**
@@ -121,17 +154,25 @@ export class Logger {
     const levelStr = LogLevel[level];
     const prefix = `[${timestamp}] [${levelStr}] [${this.context}]`;
 
-    Logger.outputChannel?.appendLine(`${prefix} ${message}`);
+    const logLine = `${prefix} ${message}`;
+    Logger.outputChannel?.appendLine(logLine);
+    Logger.fileLogStream?.write(logLine + '\n');
 
     if (data !== undefined && data !== null) {
       try {
         if (typeof data === 'object') {
-          Logger.outputChannel?.appendLine(JSON.stringify(data, null, 2));
+          const dataStr = JSON.stringify(data, null, 2);
+          Logger.outputChannel?.appendLine(dataStr);
+          Logger.fileLogStream?.write(dataStr + '\n');
         } else {
-          Logger.outputChannel?.appendLine(String(data));
+          const dataStr = String(data);
+          Logger.outputChannel?.appendLine(dataStr);
+          Logger.fileLogStream?.write(dataStr + '\n');
         }
       } catch (err) {
-        Logger.outputChannel?.appendLine(`[Error stringifying data: ${err}]`);
+        const errStr = `[Error stringifying data: ${err}]`;
+        Logger.outputChannel?.appendLine(errStr);
+        Logger.fileLogStream?.write(errStr + '\n');
       }
     }
   }
@@ -184,5 +225,7 @@ export class Logger {
   public static dispose(): void {
     Logger.outputChannel?.dispose();
     Logger.outputChannel = null;
+    Logger.fileLogStream?.end();
+    Logger.fileLogStream = null;
   }
 }

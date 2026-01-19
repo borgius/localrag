@@ -75,6 +75,10 @@ export interface Document {
   fileType: 'pdf' | 'markdown' | 'html';
   addedAt: number;
   chunkCount: number;
+  /** File modification timestamp (mtime) at the time of indexing - milliseconds */
+  fileModifiedAt?: number;
+  /** File size in bytes at the time of indexing */
+  fileSize?: number;
 }
 
 export interface TextChunk {
