@@ -599,6 +599,67 @@ export class TopicManager {
   }
 
   /**
+   * Delete all documents from a topic that are within a specific folder
+   */
+  public async deleteDocumentsByFolder(
+    topicId: string,
+    folderPath: string
+  ): Promise<number> {
+    this.logger.info("Deleting documents by folder", { topicId, folderPath });
+
+    try {
+      if (!this.topicsIndex || !this.vectorStoreFactory) {
+        throw new Error("TopicManager not initialized");
+      }
+
+      const topic = this.topicsIndex.topics[topicId];
+      if (!topic) {
+        throw new Error(`Topic not found: ${topicId}`);
+      }
+
+      const documents = this.topicDocuments.get(topicId);
+      if (!documents) {
+        this.logger.debug("No documents found for topic", { topicId });
+        return 0;
+      }
+
+      const normalizedFolderPath = path.normalize(folderPath);
+      const documentsToRemove: string[] = [];
+
+      // Find all documents within the folder
+      for (const [docId, doc] of documents.entries()) {
+        if (doc.filePath) {
+          const normalizedDocPath = path.normalize(doc.filePath);
+          if (normalizedDocPath.startsWith(normalizedFolderPath + path.sep) || 
+              normalizedDocPath === normalizedFolderPath) {
+            documentsToRemove.push(doc.filePath);
+          }
+        }
+      }
+
+      this.logger.info(`Found ${documentsToRemove.length} documents to remove from folder`, { 
+        topicId, 
+        folderPath,
+        count: documentsToRemove.length 
+      });
+
+      // Remove each document
+      for (const filePath of documentsToRemove) {
+        await this.removeDocumentByFilePath(topicId, filePath);
+      }
+
+      return documentsToRemove.length;
+    } catch (error) {
+      this.logger.error("Failed to delete documents by folder", {
+        error: error instanceof Error ? error.message : String(error),
+        topicId,
+        folderPath,
+      });
+      throw error;
+    }
+  }
+
+  /**
    * Add documents to a topic
    */
   public async addDocuments(

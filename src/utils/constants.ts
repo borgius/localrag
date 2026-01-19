@@ -75,6 +75,8 @@ export const COMMANDS = {
   EXPORT_TOPIC: "localrag.exportTopic",
   IMPORT_TOPIC: "localrag.importTopic",
   RENAME_TOPIC: "localrag.renameTopic",
+  // Watch folder management
+  REMOVE_WATCH_FOLDER: "localrag.removeWatchFolder",
 } as const;
 
 /**

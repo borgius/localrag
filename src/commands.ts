@@ -5,10 +5,11 @@
 
 import * as vscode from "vscode";
 import * as fs from "fs/promises";
+import * as path from "path";
 import { TopicManager } from "./managers/topicManager";
 import { EmbeddingService } from "./embeddings/embeddingService";
 import { TopicTreeDataProvider } from "./topicTreeView";
-import { COMMANDS } from "./utils/constants";
+import { COMMANDS, EXTENSION } from "./utils/constants";
 import { Logger } from "./utils/logger";
 import { GitHubTokenManager } from "./utils/githubTokenManager";
 import { ProgressTracker } from "./utils/progressTracker";
@@ -104,6 +105,10 @@ export class CommandHandler {
       ),
       vscode.commands.registerCommand(COMMANDS.RENAME_TOPIC, (item?: any) =>
         handler.renameTopic(item)
+      ),
+      // Watch folder management
+      vscode.commands.registerCommand(COMMANDS.REMOVE_WATCH_FOLDER, (item?: any) =>
+        handler.removeWatchFolder(item)
       )
     );
   }
@@ -597,18 +602,24 @@ export class CommandHandler {
 
       const filePaths = fileUris.map((uri) => uri.fsPath);
       
-      // Check if any selected paths are directories
+      // Check if any selected paths are directories and collect them
       let hasDirectories = false;
+      const directoryPaths: string[] = [];
       for (const filePath of filePaths) {
         try {
           const stats = await fs.stat(filePath);
           if (stats.isDirectory()) {
             hasDirectories = true;
-            break;
+            directoryPaths.push(filePath);
           }
         } catch (error) {
           // Ignore error, treat as file
         }
+      }
+
+      // If adding folders to the Default topic, update watchFolders setting
+      if (hasDirectories && selectedTopic.name === EXTENSION.DEFAULT_TOPIC_NAME) {
+        await this.updateWatchFoldersWithDirectories(directoryPaths);
       }
 
       // Always load directories recursively
@@ -1276,6 +1287,134 @@ export class CommandHandler {
     } catch (error) {
       logger.error(`Failed to import topic: ${error}`);
       vscode.window.showErrorMessage(`Failed to import topic: ${error}`);
+    }
+  }
+
+  /**
+   * Remove a folder from watch folders setting and delete its documents from the topic
+   */
+  private async removeWatchFolder(item?: any): Promise<void> {
+    try {
+      if (!item || !item.data || !item.topicId) {
+        vscode.window.showWarningMessage("No folder selected to remove.");
+        return;
+      }
+
+      const folderNode = item.data;
+      const folderPath = folderNode.path;
+      const folderName = folderNode.name;
+      const topicId = item.topicId;
+
+      // Confirm deletion
+      const confirm = await vscode.window.showWarningMessage(
+        `Remove "${folderName}" from watch folders? This will also delete all documents from this folder in the topic.`,
+        { modal: true },
+        "Remove"
+      );
+
+      if (confirm !== "Remove") {
+        return;
+      }
+
+      // Get current watch folders from settings
+      const config = vscode.workspace.getConfiguration("localrag");
+      const watchFolders = config.get<string[]>("watchFolders", []);
+      const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || "";
+
+      // Find and remove the matching folder from settings
+      const updatedFolders = watchFolders.filter((folder) => {
+        const trimmed = folder.trim();
+        if (trimmed.length === 0) return false;
+        
+        // Resolve relative paths to absolute for comparison
+        const resolved = path.isAbsolute(trimmed)
+          ? trimmed
+          : path.resolve(workspaceRoot, trimmed);
+        
+        return path.normalize(resolved) !== path.normalize(folderPath);
+      });
+
+      // Update workspace settings
+      await config.update("watchFolders", updatedFolders, vscode.ConfigurationTarget.Workspace);
+
+      // Delete documents from this folder in the topic
+      await this.topicManager.deleteDocumentsByFolder(topicId, folderPath);
+
+      vscode.window.showInformationMessage(
+        `Removed "${folderName}" from watch folders and deleted its documents.`
+      );
+      
+      // Restart file watcher with updated settings
+      const fileWatcher = getFileWatcherService();
+      if (fileWatcher) {
+        await fileWatcher.updateConfiguration();
+      }
+
+      this.treeDataProvider.refresh();
+      logger.info(`Removed watch folder: ${folderPath}`);
+    } catch (error) {
+      logger.error(`Failed to remove watch folder: ${error}`);
+      vscode.window.showErrorMessage(`Failed to remove watch folder: ${error}`);
+    }
+  }
+
+  /**
+   * Update watchFolders setting with new directories
+   * Converts absolute paths to workspace-relative paths when possible
+   */
+  private async updateWatchFoldersWithDirectories(directoryPaths: string[]): Promise<void> {
+    try {
+      const config = vscode.workspace.getConfiguration("localrag");
+      const currentFolders = config.get<string[]>("watchFolders", []);
+      const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || "";
+
+      // Convert absolute paths to relative and check for duplicates
+      const newFolders = new Set(currentFolders);
+      
+      for (const dirPath of directoryPaths) {
+        // Convert to workspace-relative path if within workspace
+        let relativePath: string;
+        if (workspaceRoot && dirPath.startsWith(workspaceRoot)) {
+          relativePath = "./" + path.relative(workspaceRoot, dirPath);
+          // Handle workspace root case
+          if (relativePath === "./") {
+            relativePath = ".";
+          }
+        } else {
+          // Use absolute path for directories outside workspace
+          relativePath = dirPath;
+        }
+
+        // Check if this folder (or equivalent) is already in the list
+        const alreadyExists = currentFolders.some((folder) => {
+          const trimmed = folder.trim();
+          const resolvedExisting = path.isAbsolute(trimmed)
+            ? trimmed
+            : path.resolve(workspaceRoot, trimmed);
+          return path.normalize(resolvedExisting) === path.normalize(dirPath);
+        });
+
+        if (!alreadyExists) {
+          newFolders.add(relativePath);
+          logger.info(`Adding folder to watch list: ${relativePath}`);
+        }
+      }
+
+      // Update settings if there are new folders
+      if (newFolders.size > currentFolders.length) {
+        const updatedFolders = Array.from(newFolders);
+        await config.update("watchFolders", updatedFolders, vscode.ConfigurationTarget.Workspace);
+        logger.info(`Updated watchFolders setting`, { folders: updatedFolders });
+
+        // Restart file watcher with updated settings
+        const fileWatcher = getFileWatcherService();
+        if (fileWatcher) {
+          await fileWatcher.updateConfiguration();
+        }
+      }
+    } catch (error) {
+      logger.warn(`Failed to update watchFolders setting: ${error}`);
+      // Don't throw - this is a non-critical operation
     }
   }
 }

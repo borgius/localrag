@@ -350,6 +350,12 @@
         "title": "Rename Topic",
         "category": "LocalRAG",
         "icon": "$(edit)"
+      },
+      {
+        "command": "localrag.removeWatchFolder",
+        "title": "Remove Watch Folder",
+        "category": "LocalRAG",
+        "icon": "$(trash)"
       }
     ],
     "viewsContainers": {
@@ -424,6 +430,11 @@
           "command": "localrag.deleteTopic",
           "when": "view == ragTopics && viewItem == topic",
           "group": "inline@5"
+        },
+        {
+          "command": "localrag.removeWatchFolder",
+          "when": "view == ragTopics && viewItem == watch-folder-root",
+          "group": "inline@1"
         }
       ]
     },
