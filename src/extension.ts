@@ -175,36 +175,11 @@ export async function activate(context: vscode.ExtensionContext) {
       );
     }
 
-    // Show welcome message on first activation
-    logger.actionStart("Welcome message check");
-    const hasShownWelcome = context.globalState.get(
-      STATE.HAS_SHOWN_WELCOME,
-      false
-    );
-    logger.debug(`Welcome message status: ${hasShownWelcome ? "already shown" : "not shown"}`);
-    logger.debug(`Welcome message status: ${hasShownWelcome ? "already shown" : "not shown"}`);
-    if (!hasShownWelcome) {
-      logger.info("Showing welcome message (first activation)");
-      const response = await vscode.window.showInformationMessage(
-        "Welcome to LocalRAG! Create topics and add documents to enable RAG queries.",
-        "Create Topic",
-        "Learn More"
-      );
-
-      if (response === "Create Topic") {
-        logger.debug("User selected: Create Topic");
-        vscode.commands.executeCommand(COMMANDS.CREATE_TOPIC);
-      } else if (response === "Learn More") {
-        logger.debug("User selected: Learn More");
-        vscode.env.openExternal(
-          vscode.Uri.parse("https://github.com/borgius/localrag")
-        );
-      }
-
+    // Note: Welcome message removed - default topic is created automatically
+    // Mark as shown so we don't need to track this anymore
+    if (!context.globalState.get(STATE.HAS_SHOWN_WELCOME, false)) {
       await context.globalState.update(STATE.HAS_SHOWN_WELCOME, true);
-      logger.debug("Welcome message state updated");
     }
-    logger.actionComplete("Welcome message check");
 
     // Initialize FileWatcherService
     logger.actionStart("FileWatcherService initialization");

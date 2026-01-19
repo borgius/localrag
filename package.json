@@ -240,7 +240,7 @@
             "./docs",
             "./confluence"
           ],
-          "markdownDescription": "**Folders to watch for changes**: List of folder paths (absolute or workspace-relative) that will be monitored. When files are added, modified, or deleted in these folders, the default topic is automatically updated. Leave empty to disable folder watching.",
+          "markdownDescription": "**Folders to watch for changes** (Default topic only): List of folder paths (absolute or workspace-relative) that will be monitored. When files are added, modified, or deleted in these folders, the **Default topic** is automatically updated.\n\n**Note:** Non-existent folders are silently ignored. Leave empty to disable folder watching.",
           "order": 19
         },
         "localrag.watchOnChanges": {
@@ -373,7 +373,7 @@
     "viewsWelcome": [
       {
         "view": "ragTopics",
-        "contents": "No topics yet. Create your first topic to start using LocalRAG!\n[Create Topic](command:localrag.createTopic)\nTopics help organize your documents for semantic search and retrieval-augmented generation with Copilot."
+        "contents": "Loading topics...\n\nA Default topic is created automatically. Add documents to start using RAG queries with Copilot."
       }
     ],
     "menus": {

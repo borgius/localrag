@@ -901,10 +901,16 @@ export class TopicManager {
       const trimmedFolder = folder.trim();
       if (trimmedFolder.length === 0) continue;
       
+      // Skip "." which would resolve to workspace root
+      if (trimmedFolder === "." || trimmedFolder === "./") continue;
+      
       // Resolve relative paths to absolute
       const resolvedFolder = path.isAbsolute(trimmedFolder)
         ? trimmedFolder
         : path.resolve(workspaceRoot, trimmedFolder);
+      
+      // Skip if resolved path is the workspace root itself
+      if (resolvedFolder === workspaceRoot) continue;
       
       const normalizedWatchFolder = path.normalize(resolvedFolder);
       

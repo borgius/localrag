@@ -45,6 +45,13 @@ export class FileWatcherService {
     const legacyFolder = config.get<string>(CONFIG.WATCH_FOLDER, "");
     this.watchOnChanges = config.get<boolean>(CONFIG.WATCH_ON_CHANGES, false);
     this.isRecursive = true;
+    
+    this.logger.debug("Watch configuration", {
+      configuredFolders,
+      legacyFolder,
+      watchOnChanges: this.watchOnChanges
+    });
+    
     this.includeExtensions = config.get<string[]>(
       "includeExtensions",
       DEFAULTS.INCLUDE_EXTENSIONS
@@ -61,24 +68,19 @@ export class FileWatcherService {
       return;
     }
 
-    // Ensure the watch folders exist
+    // Ensure the watch folders exist - silently ignore non-existent ones
     const validFolders: string[] = [];
     for (const folder of this.watchFolders) {
       try {
         const stats = await fs.stat(folder);
         if (!stats.isDirectory()) {
-          this.logger.warn("Watch folder is not a directory", { path: folder });
-          vscode.window.showWarningMessage(
-            `Watch folder is not a directory: ${folder}`
-          );
+          this.logger.debug("Watch folder is not a directory, skipping", { path: folder });
           continue;
         }
         validFolders.push(folder);
       } catch (error) {
-        this.logger.warn("Watch folder does not exist", { path: folder });
-        vscode.window.showWarningMessage(
-          `Watch folder does not exist: ${folder}`
-        );
+        // Silently ignore non-existent folders - this is expected behavior
+        this.logger.debug("Watch folder does not exist, skipping", { path: folder });
       }
     }
 
@@ -213,7 +215,7 @@ export class FileWatcherService {
 
   /**
    * Resolve workspace-relative folder paths
-   * Only allows paths within workspace folders
+   * Only allows paths within workspace folders, but NOT the workspace root itself
    */
   private resolveFolderPath(folder: string): string {
     const workspaceFolders = vscode.workspace.workspaceFolders;
@@ -222,8 +224,22 @@ export class FileWatcherService {
       return "";
     }
 
-    // If it's an absolute path, ensure it's within a workspace folder
+    // Reject "." which would resolve to workspace root
+    if (folder === "." || folder === "./") {
+      this.logger.debug("Watch folder '.' (workspace root) is not allowed, skipping", { folder });
+      return "";
+    }
+
+    const workspaceRoot = workspaceFolders[0].uri.fsPath;
+
+    // If it's an absolute path, ensure it's within a workspace folder but not the root itself
     if (path.isAbsolute(folder)) {
+      // Reject if it's the workspace root itself
+      if (workspaceFolders.some(wsFolder => folder === wsFolder.uri.fsPath)) {
+        this.logger.debug("Watch folder cannot be the workspace root itself, skipping", { folder });
+        return "";
+      }
+      
       const isInWorkspace = workspaceFolders.some(wsFolder => 
         folder.startsWith(wsFolder.uri.fsPath)
       );
@@ -236,8 +252,13 @@ export class FileWatcherService {
     }
 
     // Resolve relative paths within the first workspace folder
-    const workspaceRoot = workspaceFolders[0].uri.fsPath;
     const resolved = path.resolve(workspaceRoot, folder);
+    
+    // Reject if resolved path is the workspace root itself
+    if (workspaceFolders.some(wsFolder => resolved === wsFolder.uri.fsPath)) {
+      this.logger.debug("Watch folder cannot resolve to workspace root, skipping", { folder, resolved });
+      return "";
+    }
     
     // Verify the resolved path is still within workspace
     const isInWorkspace = workspaceFolders.some(wsFolder => 
